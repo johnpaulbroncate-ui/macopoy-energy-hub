@@ -32,12 +32,18 @@ import {
   Download,
   Copy,
   Check,
-  Smartphone
+  Smartphone,
+  SlidersHorizontal,
+  Sparkles,
+  Moon,
+  Eye
 } from 'lucide-react';
 
 // ============================================================================
 // 1. DATA LAYER: DEMONSTRATION TELEMETRY & COMPONENT SPECIFICATIONS
 // ============================================================================
+
+const DEFAULT_KEY_LABEL_IDS = ['turbine', 'solar', 'battery'];
 
 const THESIS_METADATA = {
   shortName: 'Macopoy Energy Hub',
@@ -432,23 +438,26 @@ function getTimePeriodInfo(totalMinutes) {
 function computeEnvironmentState(totalMinutes) {
   const hours = (((totalMinutes % 1440) + 1440) % 1440) / 60;
 
-  const nightSky = new THREE.Color('#07120e');
-  const dawnSky = new THREE.Color('#5a7d7c');
+  // Deep blue-green night sky rather than pure black for readable, realistic nighttime contrast
+  const nightSky = new THREE.Color('#0c212c');
+  const dawnSky = new THREE.Color('#4d737a');
   const morningSky = new THREE.Color('#c8e3ec');
   const noonSky = new THREE.Color('#d8eef5');
-  const sunsetSky = new THREE.Color('#d98a5f');
-  const duskSky = new THREE.Color('#192c28');
+  const sunsetSky = new THREE.Color('#d68456');
+  const duskSky = new THREE.Color('#16323f');
 
   let skyColor = new THREE.Color();
   let fogColor = new THREE.Color();
   let sunIntensity = 0;
   let ambientIntensity = 0.25;
+  let moonIntensity = 0;
   let lampIntensity = 0;
 
   if (hours < 4.75) {
     skyColor.copy(nightSky);
-    sunIntensity = 0.04;
-    ambientIntensity = 0.24;
+    sunIntensity = 0.02;
+    ambientIntensity = 0.34;
+    moonIntensity = 0.52;
     lampIntensity = 1.0;
   } else if (hours >= 4.75 && hours < 6.25) {
     const t = (hours - 4.75) / 1.5;
@@ -457,37 +466,42 @@ function computeEnvironmentState(totalMinutes) {
     } else {
       skyColor.lerpColors(dawnSky, morningSky, (t - 0.5) * 2);
     }
-    sunIntensity = THREE.MathUtils.lerp(0.04, 0.95, t);
-    ambientIntensity = THREE.MathUtils.lerp(0.24, 0.72, t);
-    lampIntensity = THREE.MathUtils.clamp(1.0 - t * 1.4, 0, 1);
+    sunIntensity = THREE.MathUtils.lerp(0.02, 0.95, t);
+    ambientIntensity = THREE.MathUtils.lerp(0.34, 0.74, t);
+    moonIntensity = THREE.MathUtils.lerp(0.52, 0.0, t);
+    lampIntensity = THREE.MathUtils.clamp(1.0 - t * 1.45, 0, 1);
   } else if (hours >= 6.25 && hours < 12) {
     const t = (hours - 6.25) / 5.75;
     skyColor.lerpColors(morningSky, noonSky, t);
     sunIntensity = THREE.MathUtils.lerp(0.95, 1.35, t);
-    ambientIntensity = THREE.MathUtils.lerp(0.72, 0.88, t);
+    ambientIntensity = THREE.MathUtils.lerp(0.74, 0.88, t);
+    moonIntensity = 0.0;
     lampIntensity = 0.0;
   } else if (hours >= 12 && hours < 16.75) {
     const t = (hours - 12) / 4.75;
     skyColor.lerpColors(noonSky, morningSky, t);
     sunIntensity = THREE.MathUtils.lerp(1.35, 1.0, t);
     ambientIntensity = THREE.MathUtils.lerp(0.88, 0.75, t);
+    moonIntensity = 0.0;
     lampIntensity = 0.0;
-  } else if (hours >= 16.75 && hours < 18.75) {
-    const t = (hours - 16.75) / 2.0;
-    if (t < 0.45) {
-      skyColor.lerpColors(morningSky, sunsetSky, t / 0.45);
-    } else if (t < 0.8) {
-      skyColor.lerpColors(sunsetSky, duskSky, (t - 0.45) / 0.35);
+  } else if (hours >= 16.75 && hours < 19.0) {
+    const t = (hours - 16.75) / 2.25;
+    if (t < 0.42) {
+      skyColor.lerpColors(morningSky, sunsetSky, t / 0.42);
+    } else if (t < 0.76) {
+      skyColor.lerpColors(sunsetSky, duskSky, (t - 0.42) / 0.34);
     } else {
-      skyColor.lerpColors(duskSky, nightSky, (t - 0.8) / 0.2);
+      skyColor.lerpColors(duskSky, nightSky, (t - 0.76) / 0.24);
     }
-    sunIntensity = THREE.MathUtils.lerp(1.0, 0.04, t);
-    ambientIntensity = THREE.MathUtils.lerp(0.75, 0.24, t);
-    lampIntensity = THREE.MathUtils.clamp((t - 0.35) / 0.5, 0, 1);
+    sunIntensity = THREE.MathUtils.lerp(1.0, 0.02, t);
+    ambientIntensity = THREE.MathUtils.lerp(0.75, 0.34, t);
+    moonIntensity = THREE.MathUtils.lerp(0.0, 0.52, THREE.MathUtils.clamp((t - 0.4) / 0.6, 0, 1));
+    lampIntensity = THREE.MathUtils.smoothstep(t, 0.32, 0.82);
   } else {
     skyColor.copy(nightSky);
-    sunIntensity = 0.04;
-    ambientIntensity = 0.24;
+    sunIntensity = 0.02;
+    ambientIntensity = 0.34;
+    moonIntensity = 0.52;
     lampIntensity = 1.0;
   }
 
@@ -505,6 +519,7 @@ function computeEnvironmentState(totalMinutes) {
     fogColor,
     sunIntensity,
     ambientIntensity,
+    moonIntensity,
     lampIntensity,
     sunPosition: [sunX, sunY, sunZ]
   };
@@ -658,6 +673,509 @@ function createRoadTexture() {
   return texture;
 }
 
+function createSoftGlowTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+
+  const grad = ctx.createRadialGradient(128, 128, 8, 128, 128, 124);
+  grad.addColorStop(0, 'rgba(255, 247, 194, 0.95)');
+  grad.addColorStop(0.35, 'rgba(254, 240, 138, 0.55)');
+  grad.addColorStop(0.7, 'rgba(253, 224, 71, 0.18)');
+  grad.addColorStop(1, 'rgba(253, 224, 71, 0.0)');
+
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 256, 256);
+
+  return new THREE.CanvasTexture(canvas);
+}
+
+// ============================================================================
+// 3B. LIGHTWEIGHT HERO ARCHITECTURAL VISUAL PREVIEW (SVG + SUBTLE CSS MOTION)
+// ============================================================================
+
+function HeroInstallationPreview({
+  onSelectComponentAndScroll,
+  onPreviewNightMode,
+  prefersReducedMotion
+}) {
+  const [heroNightPreview, setHeroNightPreview] = useState(false);
+
+  return (
+    <div className="relative w-full max-w-xl mx-auto lg:max-w-none">
+      <div
+        className={`relative rounded-3xl overflow-hidden border transition-colors duration-700 shadow-md ${
+          heroNightPreview
+            ? 'bg-gradient-to-b from-[#0b1f2a] via-[#13313e] to-[#172e26] border-[#2b4c59]'
+            : 'bg-gradient-to-b from-[#cde6ef] via-[#dfeff4] to-[#d9ead3] border-[#D5D2C9]'
+        } p-4 sm:p-5`}
+      >
+        {/* Top bar inside Hero Visual Card */}
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold backdrop-blur-xs border ${
+              heroNightPreview
+                ? 'bg-[#0f2936]/80 text-[#a7f3d0] border-white/15'
+                : 'bg-white/85 text-[#1B3B2B] border-[#1B3B2B]/15'
+            }`}
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                heroNightPreview
+                  ? 'bg-[#facc15] shadow-[0_0_6px_#facc15]'
+                  : 'bg-[#2D6A4F]'
+              }`}
+            />
+            <span>
+              {heroNightPreview
+                ? 'Night Preview: Photocell LED Active'
+                : 'Day Preview: Solar & Wind Harvesting'}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setHeroNightPreview((prev) => !prev)}
+            aria-label={
+              heroNightPreview
+                ? 'Switch hero preview to daytime mode'
+                : 'Switch hero preview to nighttime mode'
+            }
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+              heroNightPreview
+                ? 'bg-[#E5A93B] text-[#1A241E] border-[#facc15]'
+                : 'bg-[#1B3B2B] text-white border-[#1B3B2B] hover:bg-[#143022]'
+            }`}
+          >
+            {heroNightPreview ? (
+              <>
+                <Sun className="w-3.5 h-3.5" />
+                <span>Day View</span>
+              </>
+            ) : (
+              <>
+                <Moon className="w-3.5 h-3.5 text-[#E5A93B]" />
+                <span>Night View</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Lightweight Vector Scene Matching the 3D Installation */}
+        <div className="relative rounded-2xl overflow-hidden border border-black/5">
+          <svg
+            viewBox="0 0 560 360"
+            className="w-full h-auto block select-none"
+            role="img"
+            aria-label="Architectural preview of the Macopoy Hybrid Solar-Wind Streetlight with fixed solar canopy, rear-facing wind turbine, top photocell sensor, USB charging box, and public bench"
+          >
+            <defs>
+              <linearGradient id="heroDaySky" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#bfe0ec" />
+                <stop offset="65%" stopColor="#dff0f5" />
+                <stop offset="100%" stopColor="#e9f3e4" />
+              </linearGradient>
+              <linearGradient id="heroNightSky" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#0a1c26" />
+                <stop offset="60%" stopColor="#122e3c" />
+                <stop offset="100%" stopColor="#193833" />
+              </linearGradient>
+              <linearGradient id="heroLampBeam" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#fef08a" stopOpacity="0.52" />
+                <stop offset="65%" stopColor="#fde047" stopOpacity="0.22" />
+                <stop offset="100%" stopColor="#fef08a" stopOpacity="0.0" />
+              </linearGradient>
+              <radialGradient id="heroRoadPool" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#fef08a" stopOpacity="0.55" />
+                <stop offset="60%" stopColor="#fde047" stopOpacity="0.2" />
+                <stop offset="100%" stopColor="#fde047" stopOpacity="0" />
+              </radialGradient>
+            </defs>
+
+            {/* Sky Background */}
+            <rect
+              x="0"
+              y="0"
+              width="560"
+              height="360"
+              fill={heroNightPreview ? 'url(#heroNightSky)' : 'url(#heroDaySky)'}
+            />
+
+            {/* Subtle Sun or Moon & Stars */}
+            {heroNightPreview ? (
+              <g>
+                <circle cx="465" cy="64" r="18" fill="#dbeafe" opacity="0.9" />
+                <circle cx="472" cy="59" r="15" fill="#0d222e" />
+                <circle cx="90" cy="48" r="1.5" fill="#e0f2fe" opacity="0.7" />
+                <circle cx="155" cy="72" r="1.2" fill="#e0f2fe" opacity="0.5" />
+                <circle cx="320" cy="42" r="1.6" fill="#e0f2fe" opacity="0.65" />
+                <circle cx="395" cy="84" r="1.3" fill="#e0f2fe" opacity="0.5" />
+              </g>
+            ) : (
+              <g className={prefersReducedMotion ? '' : 'hero-float-slow'}>
+                <circle cx="462" cy="66" r="28" fill="#fde68a" opacity="0.38" />
+                <circle cx="462" cy="66" r="19" fill="#f59e0b" opacity="0.92" />
+                {/* Subtle drifting sunlight particles */}
+                <circle cx="390" cy="95" r="2.5" fill="#f59e0b" opacity="0.55" />
+                <circle cx="425" cy="118" r="2" fill="#fbbf24" opacity="0.5" />
+                <circle cx="348" cy="112" r="2.2" fill="#f59e0b" opacity="0.45" />
+              </g>
+            )}
+
+            {/* Subtle Wind Streamlines near Turbine */}
+            <g
+              className={prefersReducedMotion ? '' : 'hero-wind-drift'}
+              stroke={heroNightPreview ? '#7dd3fc' : '#0284c7'}
+              strokeWidth="2"
+              strokeLinecap="round"
+              fill="none"
+              opacity={heroNightPreview ? '0.45' : '0.4'}
+            >
+              <path d="M 48 64 C 78 64, 92 56, 122 56" />
+              <path d="M 36 82 C 70 82, 88 75, 126 75" />
+              <path d="M 58 98 C 86 98, 102 92, 132 92" />
+            </g>
+
+            {/* Distant Mascap Mountain Ridges */}
+            <path
+              d="M 0 238 Q 95 162 215 210 T 430 178 L 560 218 L 560 275 L 0 275 Z"
+              fill={heroNightPreview ? '#15342b' : '#65a84e'}
+            />
+            <path
+              d="M 150 248 Q 285 178 405 222 T 560 202 L 560 275 L 150 275 Z"
+              fill={heroNightPreview ? '#1c4337' : '#53933d'}
+              opacity="0.88"
+            />
+
+            {/* Swaying Roadside Trees */}
+            <g className={prefersReducedMotion ? '' : 'hero-tree-sway'}>
+              <rect
+                x="66"
+                y="212"
+                width="6"
+                height="28"
+                fill={heroNightPreview ? '#292019' : '#4a3728'}
+              />
+              <polygon
+                points="69,162 48,216 90,216"
+                fill={heroNightPreview ? '#122b22' : '#1f4e29'}
+              />
+              <rect
+                x="496"
+                y="206"
+                width="6"
+                height="32"
+                fill={heroNightPreview ? '#292019' : '#4a3728'}
+              />
+              <polygon
+                points="499,154 476,212 522,212"
+                fill={heroNightPreview ? '#122b22' : '#1f4e29'}
+              />
+            </g>
+
+            {/* Roadside Grass Shoulder & Rough Gravel Road */}
+            <rect
+              x="0"
+              y="236"
+              width="560"
+              height="124"
+              fill={heroNightPreview ? '#183629' : '#6ab04c'}
+            />
+            <polygon
+              points="0,282 560,282 560,360 0,360"
+              fill={heroNightPreview ? '#463c31' : '#857058'}
+            />
+            {/* Rough Road Tire Tracks & Pebbles */}
+            <path
+              d="M 0 304 Q 180 300 350 305 T 560 302"
+              stroke={heroNightPreview ? '#332b22' : '#6b5843'}
+              strokeWidth="8"
+              fill="none"
+              opacity="0.65"
+            />
+            <path
+              d="M 0 336 Q 200 340 380 333 T 560 337"
+              stroke={heroNightPreview ? '#332b22' : '#6b5843'}
+              strokeWidth="8"
+              fill="none"
+              opacity="0.65"
+            />
+
+            {/* Concrete Roadside Pad */}
+            <polygon
+              points="142,272 442,272 456,286 130,286"
+              fill={heroNightPreview ? '#6e736e' : '#b8b0a2'}
+            />
+
+            {/* Wind Turbine Rotor on Rear (-Z) Side of Pole (Opposite the Lamp Arm) */}
+            <g transform="translate(206, 78)">
+              <rect x="-5" y="-5" width="16" height="10" rx="3" fill="#cbd5e1" />
+              <g>
+                <line
+                  x1="7"
+                  y1="0"
+                  x2="28"
+                  y2="-28"
+                  stroke="#e2e8f0"
+                  strokeWidth="4.5"
+                  strokeLinecap="round"
+                />
+                <line
+                  x1="7"
+                  y1="0"
+                  x2="28"
+                  y2="28"
+                  stroke="#cbd5e1"
+                  strokeWidth="4.5"
+                  strokeLinecap="round"
+                />
+                <line
+                  x1="7"
+                  y1="0"
+                  x2="-24"
+                  y2="2"
+                  stroke="#94a3b8"
+                  strokeWidth="4.5"
+                  strokeLinecap="round"
+                />
+                <circle cx="7" cy="0" r="4.5" fill="#f8fafc" />
+              </g>
+            </g>
+
+            {/* Main Left Green Structural Pole */}
+            <rect
+              x="194"
+              y="62"
+              width="13"
+              height="214"
+              rx="3"
+              fill={heroNightPreview ? '#236e33' : '#2b8a3e'}
+            />
+
+            {/* Overhanging LED Streetlight Arm (Extending Forward over the Road) */}
+            <rect
+              x="140"
+              y="56"
+              width="68"
+              height="11"
+              rx="3.5"
+              fill={heroNightPreview ? '#236e33' : '#2b8a3e'}
+            />
+            <rect
+              x="146"
+              y="66"
+              width="44"
+              height="4"
+              rx="1.5"
+              fill={heroNightPreview ? '#fef08a' : '#d8dee3'}
+            />
+
+            {/* 3D Photocell Sensor Unit Mounted on TOP of the LED Streetlight */}
+            <g transform="translate(164, 44)">
+              <rect x="0" y="9" width="12" height="4" rx="1" fill="#1e293b" />
+              <rect x="1.5" y="3" width="9" height="7" rx="1.5" fill="#1d4ed8" />
+              <path d="M 1.5 3 A 4.5 4.5 0 0 1 10.5 3 Z" fill="#bae6fd" />
+              <circle
+                cx="6"
+                cy="6.5"
+                r="1.6"
+                fill={heroNightPreview ? '#facc15' : '#34d399'}
+              />
+            </g>
+
+            {/* Nighttime Warm Volumetric Light Cone & Road Pool */}
+            {heroNightPreview && (
+              <g>
+                <polygon
+                  points="146,70 190,70 250,352 75,352"
+                  fill="url(#heroLampBeam)"
+                />
+                <ellipse
+                  cx="165"
+                  cy="322"
+                  rx="95"
+                  ry="28"
+                  fill="url(#heroRoadPool)"
+                />
+              </g>
+            )}
+
+            {/* Canopy Frame & Fixed-Tilt Solar Panel Roof (No Tracker) */}
+            <line
+              x1="224"
+              y1="142"
+              x2="224"
+              y2="274"
+              stroke={heroNightPreview ? '#236e33' : '#2b8a3e'}
+              strokeWidth="4.5"
+            />
+            <line
+              x1="406"
+              y1="142"
+              x2="406"
+              y2="274"
+              stroke={heroNightPreview ? '#236e33' : '#2b8a3e'}
+              strokeWidth="4.5"
+            />
+            <line
+              x1="205"
+              y1="142"
+              x2="424"
+              y2="142"
+              stroke={heroNightPreview ? '#236e33' : '#2b8a3e'}
+              strokeWidth="5.5"
+            />
+            {/* Fixed-Tilt Solar Panel Array */}
+            <polygon
+              points="212,138 432,138 418,112 226,112"
+              fill={heroNightPreview ? '#152c4a' : '#1d4477'}
+              stroke="#e2e8f0"
+              strokeWidth="2.5"
+            />
+            <line
+              x1="274"
+              y1="112"
+              x2="265"
+              y2="138"
+              stroke="#93c5fd"
+              strokeOpacity="0.45"
+              strokeWidth="1.2"
+            />
+            <line
+              x1="322"
+              y1="112"
+              x2="322"
+              y2="138"
+              stroke="#93c5fd"
+              strokeOpacity="0.45"
+              strokeWidth="1.2"
+            />
+            <line
+              x1="370"
+              y1="112"
+              x2="379"
+              y2="138"
+              stroke="#93c5fd"
+              strokeOpacity="0.45"
+              strokeWidth="1.2"
+            />
+
+            {/* Yellow Battery & USB Charging Enclosure on Pole */}
+            <rect
+              x="203"
+              y="174"
+              width="24"
+              height="48"
+              rx="3"
+              fill={heroNightPreview ? '#ca9a12' : '#dfbe1b'}
+              stroke="#1e293b"
+              strokeWidth="1.2"
+            />
+            <circle cx="211" cy="186" r="2" fill="#34d399" />
+            <circle cx="211" cy="193" r="2" fill="#34d399" />
+            <rect x="216" y="185" width="6" height="4" rx="1" fill="#38bdf8" />
+            <rect x="208" y="202" width="13" height="14" rx="1" fill="#ffffff" />
+
+            {/* Orange Slatted Public Bench Underneath Solar Canopy */}
+            <g>
+              {heroNightPreview && (
+                <ellipse
+                  cx="318"
+                  cy="276"
+                  rx="74"
+                  ry="12"
+                  fill="#fef08a"
+                  opacity="0.16"
+                />
+              )}
+              <rect
+                x="252"
+                y="214"
+                width="132"
+                height="6"
+                rx="2"
+                fill={heroNightPreview ? '#b86311' : '#e07a16'}
+              />
+              <rect
+                x="252"
+                y="224"
+                width="132"
+                height="6"
+                rx="2"
+                fill={heroNightPreview ? '#b86311' : '#e07a16'}
+              />
+              <rect
+                x="246"
+                y="240"
+                width="144"
+                height="8"
+                rx="2.5"
+                fill={heroNightPreview ? '#c96d14' : '#e07a16'}
+              />
+              <rect
+                x="258"
+                y="210"
+                width="7"
+                height="64"
+                rx="2"
+                fill="#9a4f0c"
+              />
+              <rect
+                x="371"
+                y="210"
+                width="7"
+                height="64"
+                rx="2"
+                fill="#9a4f0c"
+              />
+            </g>
+          </svg>
+        </div>
+
+        {/* Interactive Quick-Focus Component Pills */}
+        <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[
+              { id: 'turbine', label: 'Wind Turbine', color: '#38bdf8' },
+              { id: 'solar', label: 'Fixed Solar Canopy', color: '#f59e0b' },
+              { id: 'photocell', label: 'Top Photocell', color: '#e879f9' },
+              { id: 'battery', label: 'USB + Battery', color: '#34d399' }
+            ].map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onSelectComponentAndScroll(item.id)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors border ${
+                  heroNightPreview
+                    ? 'bg-white/10 hover:bg-white/20 text-white border-white/15'
+                    : 'bg-white/90 hover:bg-white text-[#1F2421] border-[#D5D2C9]'
+                }`}
+              >
+                <span
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: item.color }}
+                />
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onPreviewNightMode(heroNightPreview)}
+            className={`text-[11px] font-bold underline underline-offset-2 ${
+              heroNightPreview ? 'text-[#fde047]' : 'text-[#1B3B2B]'
+            }`}
+          >
+            Open in 3D Scene →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ============================================================================
 // 4. INTERACTIVE 3D SCENE COMPONENT (THREE.JS REAL-TIME RENDERER)
 // ============================================================================
@@ -675,24 +1193,34 @@ function StreetlightThreeScene({
   onSelectComponent,
   showLabels,
   onToggleLabels,
+  showAllLabels,
+  onToggleShowAllLabels,
   showEnergyFlow,
   onToggleEnergyFlow,
   showPerson,
   onTogglePerson,
-  onResetView
+  onResetView,
+  prefersReducedMotion
 }) {
   const mountRef = useRef(null);
   const [webglError, setWebglError] = useState(false);
   const [labelPositions, setLabelPositions] = useState({});
+  const [moreControlsOpen, setMoreControlsOpen] = useState(false);
 
   const sceneStateRef = useRef({
     timeMinutes,
     showEnergyFlow,
     showPerson,
     selectedComponentId,
+    prefersReducedMotion,
+    cameraPosStart: new THREE.Vector3(...CAMERA_PRESETS[0].position),
+    cameraLookStart: new THREE.Vector3(...CAMERA_PRESETS[0].target),
     cameraPosTarget: new THREE.Vector3(...CAMERA_PRESETS[0].position),
     cameraLookTarget: new THREE.Vector3(...CAMERA_PRESETS[0].target),
-    isTransitioningCamera: false
+    transitionStartTime: 0,
+    transitionDuration: 950,
+    isTransitioningCamera: false,
+    triggerNewTransition: false
   });
 
   useEffect(() => {
@@ -712,12 +1240,16 @@ function StreetlightThreeScene({
   }, [selectedComponentId]);
 
   useEffect(() => {
+    sceneStateRef.current.prefersReducedMotion = prefersReducedMotion;
+  }, [prefersReducedMotion]);
+
+  useEffect(() => {
     const presetObj =
       CAMERA_PRESETS.find((p) => p.id === activePreset) || CAMERA_PRESETS[0];
     sceneStateRef.current.cameraPosTarget.set(...presetObj.position);
     sceneStateRef.current.cameraLookTarget.set(...presetObj.target);
-    sceneStateRef.current.isTransitioningCamera = true;
-  }, [activePreset]);
+    sceneStateRef.current.triggerNewTransition = true;
+  }, [activePreset, selectedComponentId]);
 
   useEffect(() => {
     const container = mountRef.current;
@@ -743,7 +1275,7 @@ function StreetlightThreeScene({
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#c8e3ec');
-    scene.fog = new THREE.FogExp2('#c8e3ec', 0.0085);
+    scene.fog = new THREE.FogExp2('#c8e3ec', 0.0078);
 
     const camera = new THREE.PerspectiveCamera(
       44,
@@ -808,6 +1340,11 @@ function StreetlightThreeScene({
     dirLight.shadow.camera.bottom = -d;
     dirLight.shadow.bias = -0.0005;
     scene.add(dirLight);
+
+    // Subtle Cool Moonlight Rim Light for Realistic Nighttime Visibility
+    const moonRimLight = new THREE.DirectionalLight('#93c5fd', 0.0);
+    moonRimLight.position.set(-18, 22, -16);
+    scene.add(moonRimLight);
 
     const groundGeo = new THREE.PlaneGeometry(240, 240, 32, 32);
     const groundMat = new THREE.MeshLambertMaterial({ color: '#69b34c' });
@@ -1097,12 +1634,12 @@ function StreetlightThreeScene({
 
     // Nighttime SpotLight + Volumetric Light Cone directed strictly out onto the rough road (Z = 4.6)
     const streetSpotLight = new THREE.SpotLight(
-      '#fef08a',
+      '#fff4b8',
       0,
-      26,
-      Math.PI / 2.8,
-      0.55,
-      1.15
+      28,
+      Math.PI / 2.6,
+      0.62,
+      1.1
     );
     streetSpotLight.position.set(-1.85, 6.12, 1.85);
     streetSpotLight.target.position.set(-1.85, 0, 4.75);
@@ -1110,7 +1647,17 @@ function StreetlightThreeScene({
     scene.add(streetSpotLight);
     scene.add(streetSpotLight.target);
 
-    const lightConeGeo = new THREE.ConeGeometry(3.7, 6.5, 32, 1, true);
+    // Gentle Warm Nighttime Fill Light near the Public Bench & Canopy
+    const benchNightFillLight = new THREE.PointLight('#fde68a', 0, 6.5, 1.6);
+    benchNightFillLight.position.set(0.45, 2.75, 0.65);
+    scene.add(benchNightFillLight);
+
+    // Subtle Indicator Glow Light near the USB Charging Station
+    const usbIndicatorLight = new THREE.PointLight('#34d399', 0, 2.2, 1.8);
+    usbIndicatorLight.position.set(-1.32, 2.42, 0.55);
+    scene.add(usbIndicatorLight);
+
+    const lightConeGeo = new THREE.ConeGeometry(3.85, 6.5, 32, 1, true);
     const lightConeMat = new THREE.MeshBasicMaterial({
       color: '#fef08a',
       transparent: true,
@@ -1124,18 +1671,30 @@ function StreetlightThreeScene({
     lightConeMesh.rotation.z = 0.0;
     scene.add(lightConeMesh);
 
-    const roadGlowGeo = new THREE.CircleGeometry(3.5, 32);
+    const softGlowTex = createSoftGlowTexture();
+    const roadGlowGeo = new THREE.PlaneGeometry(8.2, 6.8);
     const roadGlowMat = new THREE.MeshBasicMaterial({
-      color: '#fef08a',
+      map: softGlowTex,
       transparent: true,
       opacity: 0.0,
       depthWrite: false
     });
     const roadGlowMesh = new THREE.Mesh(roadGlowGeo, roadGlowMat);
     roadGlowMesh.rotation.x = -Math.PI / 2;
-    roadGlowMesh.position.set(-1.85, 0.065, 4.65);
-    roadGlowMesh.scale.set(1.25, 0.95, 1);
+    roadGlowMesh.position.set(-1.65, 0.065, 4.55);
     scene.add(roadGlowMesh);
+
+    const benchGlowGeo = new THREE.PlaneGeometry(4.6, 3.2);
+    const benchGlowMat = new THREE.MeshBasicMaterial({
+      map: softGlowTex,
+      transparent: true,
+      opacity: 0.0,
+      depthWrite: false
+    });
+    const benchGlowMesh = new THREE.Mesh(benchGlowGeo, benchGlowMat);
+    benchGlowMesh.rotation.x = -Math.PI / 2;
+    benchGlowMesh.position.set(0.65, 0.055, 0.25);
+    scene.add(benchGlowMesh);
 
     // --- 3. 3-Blade Wind Turbine Facing OPPOSITE (-Z) of the LED Streetlight ---
     const turbineGroup = new THREE.Group();
@@ -1827,19 +2386,35 @@ function StreetlightThreeScene({
     let frameId;
     let labelUpdateCounter = 0;
 
+    const dayHemiGround = new THREE.Color('#3c6e37');
+    const nightHemiGround = new THREE.Color('#132a36');
+    const dayHemiSky = new THREE.Color('#ffffff');
+    const nightHemiSky = new THREE.Color('#7dd3fc');
+
     const animate = () => {
       frameId = requestAnimationFrame(animate);
       const delta = Math.min(clock.getDelta(), 0.1);
       const elapsed = clock.getElapsedTime();
+      const nowMs = performance.now();
 
+      const state = sceneStateRef.current;
       const {
         timeMinutes: curMins,
         showEnergyFlow: flowActive,
         showPerson: personActive,
         cameraPosTarget,
-        cameraLookTarget,
-        isTransitioningCamera
-      } = sceneStateRef.current;
+        cameraLookTarget
+      } = state;
+
+      // Start a smooth ease-out camera transition if triggered
+      if (state.triggerNewTransition) {
+        state.triggerNewTransition = false;
+        state.cameraPosStart.copy(camera.position);
+        state.cameraLookStart.copy(currentLookAt);
+        state.transitionStartTime = nowMs;
+        state.transitionDuration = state.prefersReducedMotion ? 60 : 950;
+        state.isTransitioningCamera = true;
+      }
 
       personChargingGroup.visible = personActive;
       if (personActive) {
@@ -1858,24 +2433,33 @@ function StreetlightThreeScene({
       dirLight.position.set(...env.sunPosition);
       dirLight.intensity = env.sunIntensity;
       hemiLight.intensity = env.ambientIntensity;
+      hemiLight.color.lerpColors(dayHemiSky, nightHemiSky, env.lampIntensity * 0.65);
+      hemiLight.groundColor.lerpColors(dayHemiGround, nightHemiGround, env.lampIntensity);
 
-      const dayFactor = THREE.MathUtils.clamp(env.ambientIntensity / 0.85, 0.12, 1);
+      // Cool moonlight rim illumination so the wind turbine, pole, and fixed solar panel remain readable at night
+      moonRimLight.intensity = env.moonIntensity;
+
+      const dayFactor = THREE.MathUtils.clamp(env.ambientIntensity / 0.85, 0.22, 1);
       groundMat.color.setRGB(
-        0.41 * dayFactor,
-        0.70 * dayFactor,
-        0.30 * dayFactor
+        0.38 * dayFactor,
+        0.68 * dayFactor,
+        0.31 * dayFactor
       );
       hillMat.color.setRGB(
-        0.34 * dayFactor,
-        0.62 * dayFactor,
-        0.25 * dayFactor
+        0.32 * dayFactor,
+        0.60 * dayFactor,
+        0.26 * dayFactor
       );
       streakMat.opacity = 0.42 * dayFactor;
 
-      ledLensMat.emissiveIntensity = env.lampIntensity * 1.4;
-      streetSpotLight.intensity = env.lampIntensity * 6.0;
-      lightConeMat.opacity = env.lampIntensity * 0.21;
-      roadGlowMat.opacity = env.lampIntensity * 0.22;
+      // Keep streetlight strictly OFF during daytime and smoothly active at dusk/night
+      ledLensMat.emissiveIntensity = env.lampIntensity * 1.65;
+      streetSpotLight.intensity = env.lampIntensity * 7.2;
+      benchNightFillLight.intensity = env.lampIntensity * 0.85;
+      usbIndicatorLight.intensity = 0.15 + env.lampIntensity * 0.75;
+      lightConeMat.opacity = env.lampIntensity * 0.22;
+      roadGlowMat.opacity = env.lampIntensity * 0.68;
+      benchGlowMat.opacity = env.lampIntensity * 0.28;
       photocellStatusLedMat.color.set(
         env.lampIntensity > 0.35 ? '#facc15' : '#34d399'
       );
@@ -1889,7 +2473,8 @@ function StreetlightThreeScene({
       });
 
       // Wind turbine rotor spins cleanly on the rear (-Z) side opposite the LED lamp
-      rotorHubGroup.rotation.z += delta * 4.2;
+      const spinSpeed = state.prefersReducedMotion ? 1.2 : 4.2;
+      rotorHubGroup.rotation.z += delta * spinSpeed;
 
       energyFlowGroup.visible = flowActive;
       if (flowActive) {
@@ -1912,7 +2497,7 @@ function StreetlightThreeScene({
         updateParticleSet(usbParticles, true);
       }
 
-      if (isTransitioningCamera) {
+      if (state.isTransitioningCamera) {
         const w = container ? container.clientWidth : 1024;
         const h = container ? container.clientHeight : 600;
         const { distanceMultiplier } = getResponsiveCameraConfig(w, h);
@@ -1925,16 +2510,28 @@ function StreetlightThreeScene({
               .multiplyScalar(distanceMultiplier)
           );
 
-        camera.position.lerp(adjustedTargetPos, delta * 5.5);
-        currentLookAt.lerp(cameraLookTarget, delta * 5.5);
+        const rawProgress = Math.min(
+          1,
+          (nowMs - state.transitionStartTime) / Math.max(1, state.transitionDuration)
+        );
+        // Cubic ease-out for smooth, natural camera deceleration
+        const easedProgress = 1 - Math.pow(1 - rawProgress, 3);
+
+        camera.position.lerpVectors(
+          state.cameraPosStart,
+          adjustedTargetPos,
+          easedProgress
+        );
+        currentLookAt.lerpVectors(
+          state.cameraLookStart,
+          cameraLookTarget,
+          easedProgress
+        );
         camera.lookAt(currentLookAt);
         syncSphericalFromCamera();
 
-        if (
-          camera.position.distanceTo(adjustedTargetPos) < 0.05 &&
-          currentLookAt.distanceTo(cameraLookTarget) < 0.05
-        ) {
-          sceneStateRef.current.isTransitioningCamera = false;
+        if (rawProgress >= 1) {
+          state.isTransitioningCamera = false;
         }
       }
 
@@ -1952,7 +2549,12 @@ function StreetlightThreeScene({
           projVec.project(camera);
           const x = (projVec.x * 0.5 + 0.5) * width;
           const y = (-(projVec.y * 0.5) + 0.5) * height;
-          const visible = projVec.z < 1.0 && x > 20 && x < width - 20 && y > 20 && y < height - 20;
+          const visible =
+            projVec.z < 1.0 &&
+            x > 20 &&
+            x < width - 20 &&
+            y > 20 &&
+            y < height - 20;
           nextPositions[comp.id] = { x, y, visible };
         });
         setLabelPositions(nextPositions);
@@ -1967,10 +2569,28 @@ function StreetlightThreeScene({
       window.removeEventListener('mousemove', handlePointerMove);
       window.removeEventListener('mouseup', handlePointerUp);
       domElem.removeEventListener('touchstart', handlePointerDown);
-      window.removeEventListener('touchmove', handlePointerMove);
+      domElem.removeEventListener('touchmove', handlePointerMove);
       window.removeEventListener('touchend', handlePointerUp);
       domElem.removeEventListener('wheel', handleWheel);
       window.removeEventListener('resize', handleResize);
+
+      // Clean up Three.js resources to prevent memory leaks
+      scene.traverse((obj) => {
+        if (obj.geometry) {
+          obj.geometry.dispose();
+        }
+        if (obj.material) {
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach((m) => {
+              if (m.map) m.map.dispose();
+              m.dispose();
+            });
+          } else {
+            if (obj.material.map) obj.material.map.dispose();
+            obj.material.dispose();
+          }
+        }
+      });
       renderer.dispose();
     };
   }, [onSelectComponent]);
@@ -2000,20 +2620,61 @@ function StreetlightThreeScene({
     return { cx, cy, isDayOrb: hours >= 6 && hours < 18 };
   }, [timeMinutes]);
 
+  // Offset and de-collide 2D projected labels so they do not overlap each other or obscure the model center
+  const adjustedLabelPositions = useMemo(() => {
+    const visibleItems = Object.values(SYSTEM_COMPONENTS)
+      .filter(
+        (comp) =>
+          showAllLabels ||
+          DEFAULT_KEY_LABEL_IDS.includes(comp.id) ||
+          comp.id === selectedComponentId
+      )
+      .map((comp) => {
+        const raw = labelPositions[comp.id];
+        if (!raw || !raw.visible) return null;
+        return {
+          comp,
+          x: raw.x,
+          y: raw.y - 16
+        };
+      })
+      .filter(Boolean);
+
+    visibleItems.sort((a, b) => a.y - b.y);
+    for (let i = 1; i < visibleItems.length; i++) {
+      const prev = visibleItems[i - 1];
+      const curr = visibleItems[i];
+      if (Math.abs(curr.x - prev.x) < 95 && Math.abs(curr.y - prev.y) < 34) {
+        curr.y = prev.y + 34;
+      }
+    }
+
+    const map = {};
+    visibleItems.forEach((item) => {
+      map[item.comp.id] = item;
+    });
+    return map;
+  }, [labelPositions, showAllLabels, selectedComponentId]);
+
   return (
     <div className="w-full">
-      <div className="relative w-full h-[390px] xs:h-[430px] sm:h-[520px] lg:h-[600px] rounded-2xl overflow-hidden border border-[#D8D5CD] shadow-sm bg-[#102019] select-none">
+      <div className="relative w-full h-[310px] sm:h-[460px] lg:h-[580px] rounded-2xl overflow-hidden border border-[#D8D5CD] shadow-sm bg-[#102019] select-none">
         {webglError ? (
-          <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center bg-[#182921] text-[#F7F6F2]">
-            <ShieldAlert className="w-10 h-10 text-[#E5A93B] mb-3" />
-            <h3 className="text-lg font-semibold mb-1">
-              Interactive 3D Preview Unavailable
-            </h3>
-            <p className="text-sm text-[#C7D0CB] max-w-md">
-              WebGL could not be initialized on this browser or device. You can
-              still inspect all system components and explore the energy flow
-              stages using the controls below.
-            </p>
+          <div className="w-full h-full overflow-y-auto p-4 sm:p-6 bg-[#F7F6F2] flex flex-col justify-center">
+            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-[#FEF3C7] border border-[#F59E0B]/40 text-[#92400E] text-xs font-semibold mb-3">
+              <ShieldAlert className="w-4 h-4 shrink-0" />
+              <span>
+                WebGL 3D preview is unavailable on this device — Showing the
+                interactive 2D System Diagram as primary view.
+              </span>
+            </div>
+            <Interactive2DEnergyDiagram
+              selectedComponentId={selectedComponentId}
+              onSelectComponent={onSelectComponent}
+              timeMinutes={timeMinutes}
+              prefersReducedMotion={prefersReducedMotion}
+              isFallback={true}
+            />
           </div>
         ) : (
           <div
@@ -2025,155 +2686,108 @@ function StreetlightThreeScene({
         )}
 
         {/* TOP-LEFT HUD OVERLAY: Digital Clock, Period Label, & Sun/Moon Arc */}
-        <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-10 flex items-center gap-2.5 sm:gap-4 px-3 py-2 sm:px-4 sm:py-3 rounded-xl bg-[#1A261F]/80 backdrop-blur-md border border-white/10 text-white pointer-events-none">
-          <div>
-            <div className="text-lg sm:text-3xl font-bold tracking-tight leading-none">
-              {formattedClock}
+        {!webglError && (
+          <div className="absolute top-2.5 left-2.5 sm:top-4 sm:left-4 z-10 flex items-center gap-2.5 sm:gap-4 px-3 py-1.5 sm:px-4 sm:py-2.5 rounded-xl bg-[#1A261F]/80 backdrop-blur-md border border-white/10 text-white pointer-events-none">
+            <div>
+              <div className="text-base sm:text-2xl font-bold tracking-tight leading-none">
+                {formattedClock}
+              </div>
+              <div className="text-[11px] sm:text-xs text-white/85 font-medium mt-0.5">
+                {periodInfo.label}
+              </div>
             </div>
-            <div className="text-[11px] sm:text-sm text-white/85 font-medium mt-0.5 sm:mt-1">
-              {periodInfo.label}
-            </div>
-          </div>
 
-          <svg
-            width="64"
-            height="32"
-            viewBox="0 0 84 42"
-            className="overflow-visible shrink-0 sm:w-[84px] sm:h-[42px]"
-            aria-hidden="true"
-          >
-            <line
-              x1="6"
-              y1="34"
-              x2="78"
-              y2="34"
-              stroke="rgba(255,255,255,0.45)"
-              strokeWidth="1.2"
-            />
-            <path
-              d="M 12 34 A 30 26 0 0 1 72 34"
-              fill="none"
-              stroke="rgba(255,255,255,0.45)"
-              strokeWidth="1.3"
-              strokeDasharray="3 3"
-            />
-            <circle
-              cx={arcProgress.cx}
-              cy={arcProgress.cy}
-              r="4.5"
-              fill={arcProgress.isDayOrb ? '#f59e0b' : '#e2e8f0'}
-            />
-          </svg>
-        </div>
+            <svg
+              width="58"
+              height="28"
+              viewBox="0 0 84 42"
+              className="overflow-visible shrink-0 sm:w-[76px] sm:h-[38px]"
+              aria-hidden="true"
+            >
+              <line
+                x1="6"
+                y1="34"
+                x2="78"
+                y2="34"
+                stroke="rgba(255,255,255,0.45)"
+                strokeWidth="1.2"
+              />
+              <path
+                d="M 12 34 A 30 26 0 0 1 72 34"
+                fill="none"
+                stroke="rgba(255,255,255,0.45)"
+                strokeWidth="1.3"
+                strokeDasharray="3 3"
+              />
+              <circle
+                cx={arcProgress.cx}
+                cy={arcProgress.cy}
+                r="4.5"
+                fill={arcProgress.isDayOrb ? '#f59e0b' : '#e2e8f0'}
+              />
+            </svg>
+          </div>
+        )}
 
         {/* TOP-RIGHT PHOTOCELL & ENERGY FLOW MINI BADGE */}
-        <div className="hidden sm:flex absolute top-4 right-4 z-10 items-center gap-2 px-3.5 py-2 rounded-xl bg-[#1A261F]/75 backdrop-blur-md border border-white/10 text-xs text-white/90">
-          <span
-            className={`w-2 h-2 rounded-full ${
-              periodInfo.isNight
-                ? 'bg-[#facc15] shadow-[0_0_8px_#facc15]'
-                : 'bg-[#34d399]'
-            }`}
-          />
-          <span>
-            {periodInfo.isNight
-              ? 'Photocell Demo: Night Illumination ON'
-              : 'Photocell Demo: Daytime Charging Mode'}
-          </span>
-        </div>
+        {!webglError && (
+          <div className="hidden sm:flex absolute top-4 right-4 z-10 items-center gap-2 px-3.5 py-2 rounded-xl bg-[#1A261F]/75 backdrop-blur-md border border-white/10 text-xs text-white/90">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                periodInfo.isNight
+                  ? 'bg-[#facc15] shadow-[0_0_8px_#facc15]'
+                  : 'bg-[#34d399]'
+              }`}
+            />
+            <span>
+              {periodInfo.isNight
+                ? 'Photocell Demo: Night Illumination ON'
+                : 'Photocell Demo: Daytime Charging Mode'}
+            </span>
+          </div>
+        )}
 
-        {/* FLOATING 3D COMPONENT PILL LABELS */}
+        {/* FLOATING 3D COMPONENT PILL LABELS (Key labels by default + selected component, or All labels) */}
         {showLabels &&
           !webglError &&
-          Object.values(SYSTEM_COMPONENTS).map((comp) => {
-            const pos = labelPositions[comp.id];
-            if (!pos || !pos.visible) return null;
-            const isSelected = selectedComponentId === comp.id;
+          Object.values(SYSTEM_COMPONENTS)
+            .filter(
+              (comp) =>
+                showAllLabels ||
+                DEFAULT_KEY_LABEL_IDS.includes(comp.id) ||
+                comp.id === selectedComponentId
+            )
+            .map((comp) => {
+              const pos = adjustedLabelPositions[comp.id];
+              if (!pos) return null;
+              const isSelected = selectedComponentId === comp.id;
 
-            return (
-              <button
-                key={comp.id}
-                type="button"
-                onClick={() => onSelectComponent(comp.id)}
-                style={{
-                  left: `${pos.x}px`,
-                  top: `${pos.y}px`,
-                  transform: 'translate(-50%, -120%)'
-                }}
-                className={`absolute z-10 inline-flex items-center gap-1.5 sm:gap-2 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-medium transition-all shadow-md backdrop-blur-md border ${
-                  isSelected
-                    ? 'bg-[#1D4332] text-white border-white/80 scale-105'
-                    : 'bg-[#1F2923]/85 text-white/95 border-white/25 hover:bg-[#1D4332]/90'
-                }`}
-              >
-                <span
-                  className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: comp.dotColor }}
-                />
-                <span className="whitespace-nowrap">{comp.label}</span>
-              </button>
-            );
-          })}
-
-        {/* BOTTOM-RIGHT OVERLAY CONTROLS */}
-        <div className="absolute bottom-3 left-3 right-3 sm:left-auto sm:bottom-4 sm:right-4 z-10 flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
-          <button
-            type="button"
-            onClick={onTogglePerson}
-            aria-pressed={showPerson}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-[11px] sm:text-sm font-medium transition-colors border shadow-sm ${
-              showPerson
-                ? 'bg-[#E5A93B] text-[#1A241E] border-[#FDE68A] font-semibold'
-                : 'bg-[#1F2923]/85 text-white border-white/25 hover:bg-[#2A3730]'
-            }`}
-          >
-            {showPerson ? (
-              <>
-                <UserCheck className="w-3.5 h-3.5" />
-                <span>Person: ON</span>
-              </>
-            ) : (
-              <>
-                <UserPlus className="w-3.5 h-3.5" />
-                <span>Add person</span>
-              </>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={onToggleLabels}
-            aria-pressed={showLabels}
-            className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-[11px] sm:text-sm font-medium transition-colors border shadow-sm ${
-              showLabels
-                ? 'bg-[#F4F3EF] text-[#1F2421] border-white'
-                : 'bg-[#1F2923]/85 text-white border-white/25 hover:bg-[#2A3730]'
-            }`}
-          >
-            Labels
-          </button>
-
-          <button
-            type="button"
-            onClick={onToggleEnergyFlow}
-            aria-pressed={showEnergyFlow}
-            className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-[11px] sm:text-sm font-medium transition-colors border shadow-sm ${
-              showEnergyFlow
-                ? 'bg-[#F4F3EF] text-[#1F2421] border-white'
-                : 'bg-[#1F2923]/85 text-white border-white/25 hover:bg-[#2A3730]'
-            }`}
-          >
-            Energy flow
-          </button>
-
-          <button
-            type="button"
-            onClick={onResetView}
-            className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-[11px] sm:text-sm font-medium bg-[#25352C]/90 hover:bg-[#1B3B2B] text-white border border-white/25 transition-colors shadow-sm"
-          >
-            Reset
-          </button>
-        </div>
+              return (
+                <button
+                  key={comp.id}
+                  type="button"
+                  onClick={() => onSelectComponent(comp.id)}
+                  aria-label={`Inspect ${comp.fullTitle} in 3D`}
+                  aria-pressed={isSelected}
+                  style={{
+                    left: `${pos.x}px`,
+                    top: `${pos.y}px`,
+                    transform: 'translate(-50%, -100%)'
+                  }}
+                  className={`absolute z-10 inline-flex items-center gap-1.5 sm:gap-2 px-2.5 py-1.5 sm:px-3 sm:py-1.5 min-h-[32px] rounded-full text-[11px] sm:text-xs font-medium transition-all duration-200 backdrop-blur-md border ${
+                    isSelected
+                      ? 'bg-[#1D4332] text-white border-[#FDE68A] ring-2 ring-[#E5A93B]/60 scale-105 shadow-lg z-20 opacity-100 font-semibold'
+                      : 'bg-[#1F2923]/80 text-white/85 border-white/20 opacity-75 hover:opacity-100 hover:bg-[#1D4332]/90 shadow-sm'
+                  }`}
+                >
+                  <span
+                    className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: comp.dotColor }}
+                  />
+                  <span className="whitespace-nowrap">{comp.label}</span>
+                </button>
+              );
+            })}
       </div>
 
       {/* Mobile Touch Hint Bar */}
@@ -2182,120 +2796,708 @@ function StreetlightThreeScene({
         <span>Tap parts to inspect</span>
       </div>
 
-      {/* BELOW-CANVAS TIME CONTROLS BAR */}
-      <div className="mt-5 flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
-        <button
-          type="button"
-          onClick={onTogglePlay}
-          className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[#1D4332] hover:bg-[#153325] text-white font-medium text-sm transition-colors shrink-0 shadow-sm"
-        >
-          {isPlaying ? (
-            <>
-              <Pause className="w-4 h-4" />
-              <span>Pause</span>
-            </>
-          ) : (
-            <>
-              <Play className="w-4 h-4" />
-              <span>Play</span>
-            </>
-          )}
-        </button>
+      {/* SIMPLIFIED & GROUPED 3D CONTROL PANEL */}
+      <div className="mt-4 bg-white rounded-2xl p-4 sm:p-5 border border-[#DCD9D0] shadow-2xs space-y-4">
+        {/* GROUP 1 & 2: SCENE ACTIONS + TIME SIMULATION */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
+          {/* Scene Actions (Primary Controls Visible by Default) */}
+          <div className="lg:col-span-5 flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#525B56] w-full sm:w-auto mr-1">
+              Scene actions
+            </span>
 
-        <div className="flex-1 flex flex-col justify-center px-1">
-          <input
-            type="range"
-            min={0}
-            max={1439}
-            value={Math.floor(timeMinutes)}
-            onChange={(e) => onTimeChange(Number(e.target.value))}
-            aria-label="Time of day simulation slider"
-            className="w-full h-2.5 rounded-lg appearance-none cursor-pointer bg-[#E2E0D8] accent-[#1D4332]"
-            style={{
-              background: `linear-gradient(to right, #1D4332 0%, #1D4332 ${
-                (timeMinutes / 1439) * 100
-              }%, #E2E0D8 ${(timeMinutes / 1439) * 100}%, #E2E0D8 100%)`
-            }}
-          />
-          <div className="flex justify-between text-xs text-[#525B56] font-medium mt-2 select-none">
             <button
               type="button"
-              onClick={() => onTimeChange(0)}
-              className="hover:text-[#1B3B2B]"
+              onClick={onTogglePlay}
+              aria-label={isPlaying ? 'Pause time simulation' : 'Play time simulation'}
+              aria-pressed={isPlaying}
+              className={`inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 min-h-[42px] rounded-xl text-xs sm:text-sm font-semibold transition-colors border shadow-2xs ${
+                isPlaying
+                  ? 'bg-[#E5A93B] text-[#1A241E] border-[#d99726]'
+                  : 'bg-[#1D4332] hover:bg-[#153325] text-white border-[#1D4332]'
+              }`}
             >
-              12 AM
+              {isPlaying ? (
+                <>
+                  <Pause className="w-3.5 h-3.5" />
+                  <span>Pause</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-3.5 h-3.5" />
+                  <span>Play</span>
+                </>
+              )}
             </button>
+
             <button
               type="button"
-              onClick={() => onTimeChange(360)}
-              className="hover:text-[#1B3B2B]"
+              onClick={onToggleLabels}
+              aria-pressed={showLabels}
+              aria-label="Toggle 3D component labels"
+              className={`inline-flex items-center justify-center gap-1.5 px-3 py-2.5 min-h-[42px] rounded-xl text-xs sm:text-sm font-medium transition-colors border ${
+                showLabels
+                  ? 'bg-[#EFF6F2] text-[#1B3B2B] border-[#95D5B2] font-semibold'
+                  : 'bg-[#F7F6F2] text-[#525B56] border-[#D5D2C9] hover:bg-[#EAE7DF]'
+              }`}
             >
-              6 AM
+              <Tag className="w-3.5 h-3.5" />
+              <span>Labels</span>
             </button>
+
             <button
               type="button"
-              onClick={() => onTimeChange(720)}
-              className="hover:text-[#1B3B2B]"
+              onClick={onToggleEnergyFlow}
+              aria-pressed={showEnergyFlow}
+              aria-label="Toggle conceptual energy flow particles"
+              className={`inline-flex items-center justify-center gap-1.5 px-3 py-2.5 min-h-[42px] rounded-xl text-xs sm:text-sm font-medium transition-colors border ${
+                showEnergyFlow
+                  ? 'bg-[#EFF6F2] text-[#1B3B2B] border-[#95D5B2] font-semibold'
+                  : 'bg-[#F7F6F2] text-[#525B56] border-[#D5D2C9] hover:bg-[#EAE7DF]'
+              }`}
             >
-              12 PM
+              <Zap className="w-3.5 h-3.5" />
+              <span>Energy Flow</span>
             </button>
+
             <button
               type="button"
-              onClick={() => onTimeChange(1080)}
-              className="hover:text-[#1B3B2B]"
+              onClick={onResetView}
+              aria-label="Reset camera view and simulation time"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 min-h-[42px] rounded-xl text-xs sm:text-sm font-medium bg-[#F7F6F2] hover:bg-[#EAE7DF] text-[#1F2421] border border-[#D5D2C9] transition-colors"
             >
-              6 PM
+              <RotateCcw className="w-3.5 h-3.5 text-[#525B56]" />
+              <span>Reset</span>
             </button>
+
             <button
               type="button"
-              onClick={() => onTimeChange(1439)}
-              className="hover:text-[#1B3B2B]"
+              onClick={() => setMoreControlsOpen((prev) => !prev)}
+              aria-expanded={moreControlsOpen}
+              aria-controls="more-3d-controls-drawer"
+              className={`inline-flex items-center justify-center gap-1.5 px-3 py-2.5 min-h-[42px] rounded-xl text-xs font-semibold transition-colors border ml-auto sm:ml-0 ${
+                moreControlsOpen || showPerson || showAllLabels
+                  ? 'bg-[#1B3B2B] text-white border-[#1B3B2B]'
+                  : 'bg-white hover:bg-[#F7F6F2] text-[#37403B] border-[#D5D2C9]'
+              }`}
             >
-              12 AM
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span>More controls</span>
             </button>
+          </div>
+
+          {/* Time Simulation Slider */}
+          <div className="lg:col-span-7 flex flex-col justify-center lg:pl-4 lg:border-l border-[#ECEAE3]">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#525B56]">
+                Time simulation
+              </span>
+              <span className="text-xs font-semibold text-[#1B3B2B]">
+                {formattedClock} • {periodInfo.label}
+              </span>
+            </div>
+
+            <input
+              type="range"
+              min={0}
+              max={1439}
+              value={Math.floor(timeMinutes)}
+              onChange={(e) => onTimeChange(Number(e.target.value))}
+              aria-label="Time of day simulation slider"
+              className="w-full h-2.5 rounded-lg appearance-none cursor-pointer bg-[#E2E0D8] accent-[#1D4332]"
+              style={{
+                background: `linear-gradient(to right, #1D4332 0%, #1D4332 ${
+                  (timeMinutes / 1439) * 100
+                }%, #E2E0D8 ${(timeMinutes / 1439) * 100}%, #E2E0D8 100%)`
+              }}
+            />
+
+            <div className="flex justify-between text-[11px] text-[#525B56] font-medium mt-1.5 select-none">
+              <button
+                type="button"
+                onClick={() => onTimeChange(0)}
+                className="py-1 px-1 hover:text-[#1B3B2B]"
+              >
+                12 AM
+              </button>
+              <button
+                type="button"
+                onClick={() => onTimeChange(360)}
+                className="py-1 px-1 hover:text-[#1B3B2B]"
+              >
+                6 AM
+              </button>
+              <button
+                type="button"
+                onClick={() => onTimeChange(720)}
+                className="py-1 px-1 hover:text-[#1B3B2B]"
+              >
+                12 PM
+              </button>
+              <button
+                type="button"
+                onClick={() => onTimeChange(1065)}
+                className="py-1 px-1 hover:text-[#1B3B2B]"
+              >
+                5:45 PM
+              </button>
+              <button
+                type="button"
+                onClick={() => onTimeChange(1320)}
+                className="py-1 px-1 hover:text-[#1B3B2B]"
+              >
+                10 PM
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="shrink-0">
-          <label htmlFor="sim-speed-select" className="sr-only">
-            Simulation speed
-          </label>
-          <select
-            id="sim-speed-select"
-            value={simSpeed}
-            onChange={(e) => onSimSpeedChange(Number(e.target.value))}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-white border border-[#D5D2C9] text-sm font-medium text-[#1F2421] focus:outline-none focus:ring-2 focus:ring-[#1D4332]"
+        {/* EXPANDABLE "MORE CONTROLS" DRAWER */}
+        {moreControlsOpen && (
+          <div
+            id="more-3d-controls-drawer"
+            className="pt-3.5 border-t border-[#ECEAE3] grid grid-cols-1 sm:grid-cols-3 gap-3 bg-[#F7F6F2] p-3.5 rounded-xl"
           >
-            <option value={0.5}>Slow</option>
-            <option value={1}>Normal</option>
-            <option value={2.5}>Fast</option>
-          </select>
+            {/* Commuter Simulation Toggle */}
+            <div className="flex flex-col justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#525B56] mb-1.5">
+                Commuter &amp; USB Demo
+              </span>
+              <button
+                type="button"
+                onClick={onTogglePerson}
+                aria-pressed={showPerson}
+                className={`inline-flex items-center justify-center gap-2 px-3.5 py-2.5 min-h-[42px] rounded-xl text-xs font-semibold transition-colors border ${
+                  showPerson
+                    ? 'bg-[#E5A93B] text-[#1A241E] border-[#d99726]'
+                    : 'bg-white text-[#1F2421] border-[#D5D2C9] hover:bg-[#EAE7DF]'
+                }`}
+              >
+                {showPerson ? (
+                  <>
+                    <UserCheck className="w-3.5 h-3.5" />
+                    <span>Person charging: ON</span>
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Add person on bench</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Label Density Selector */}
+            <div className="flex flex-col justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#525B56] mb-1.5">
+                3D Scene Label Density
+              </span>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => onToggleShowAllLabels(false)}
+                  aria-pressed={!showAllLabels}
+                  className={`px-2.5 py-2.5 min-h-[42px] rounded-xl text-xs font-semibold border transition-colors ${
+                    !showAllLabels
+                      ? 'bg-[#1D4332] text-white border-[#1D4332]'
+                      : 'bg-white text-[#37403B] border-[#D5D2C9] hover:bg-[#EAE7DF]'
+                  }`}
+                >
+                  Key labels (3)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onToggleShowAllLabels(true)}
+                  aria-pressed={showAllLabels}
+                  className={`px-2.5 py-2.5 min-h-[42px] rounded-xl text-xs font-semibold border transition-colors ${
+                    showAllLabels
+                      ? 'bg-[#1D4332] text-white border-[#1D4332]'
+                      : 'bg-white text-[#37403B] border-[#D5D2C9] hover:bg-[#EAE7DF]'
+                  }`}
+                >
+                  Show all (6)
+                </button>
+              </div>
+            </div>
+
+            {/* Simulation Speed Selector */}
+            <div className="flex flex-col justify-between">
+              <label
+                htmlFor="sim-speed-select"
+                className="text-[11px] font-bold uppercase tracking-wider text-[#525B56] mb-1.5"
+              >
+                Time Cycle Speed
+              </label>
+              <select
+                id="sim-speed-select"
+                value={simSpeed}
+                onChange={(e) => onSimSpeedChange(Number(e.target.value))}
+                className="w-full px-3 py-2.5 min-h-[42px] rounded-xl bg-white border border-[#D5D2C9] text-xs font-semibold text-[#1F2421] focus:outline-none focus:ring-2 focus:ring-[#1D4332]"
+              >
+                <option value={0.5}>Slow (0.5x)</option>
+                <option value={1}>Normal (1x)</option>
+                <option value={2.5}>Fast (2.5x)</option>
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* GROUP 3: CAMERA VIEWS (Horizontally scrollable on mobile) */}
+        <div className="pt-3 border-t border-[#ECEAE3] flex flex-col sm:flex-row sm:items-center gap-2.5">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-[#525B56] shrink-0 mr-1">
+            Camera views
+          </span>
+          <div
+            className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 no-scrollbar"
+            role="group"
+            aria-label="Camera view presets"
+          >
+            {CAMERA_PRESETS.map((preset) => {
+              const isActive = activePreset === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => onSelectPreset(preset)}
+                  aria-pressed={isActive}
+                  className={`px-3.5 py-2 min-h-[40px] rounded-full text-xs sm:text-sm font-medium transition-all border shrink-0 whitespace-nowrap ${
+                    isActive
+                      ? 'bg-[#1D4332] text-white border-[#1D4332] shadow-xs font-semibold'
+                      : 'bg-[#F7F6F2] hover:bg-[#EAE7DF] text-[#1F2421] border-[#D5D2C9]'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// 4B. ACCESSIBLE 2D INTERACTIVE ENERGY-FLOW DIAGRAM COMPONENT
+// ============================================================================
+
+function Interactive2DEnergyDiagram({
+  selectedComponentId,
+  onSelectComponent,
+  timeMinutes,
+  prefersReducedMotion,
+  isFallback = false
+}) {
+  const [activeNodeKey, setActiveNodeKey] = useState(null);
+  const periodInfo = useMemo(
+    () => getTimePeriodInfo(timeMinutes),
+    [timeMinutes]
+  );
+
+  const handleNodeClick = (nodeKey, componentRef) => {
+    setActiveNodeKey(nodeKey);
+    onSelectComponent(componentRef);
+  };
+
+  const isHighlighted = (nodeKey, componentRef) => {
+    if (activeNodeKey) return activeNodeKey === nodeKey;
+    return selectedComponentId === componentRef;
+  };
+
+  return (
+    <div
+      className={`rounded-3xl border ${
+        isFallback
+          ? 'bg-white border-[#D8D5CD] p-4 sm:p-5'
+          : 'bg-white border-[#DCD9D0] p-5 sm:p-7 shadow-2xs'
+      }`}
+      role="region"
+      aria-label="Interactive 2D Hybrid Solar-Wind Energy Flow Diagram"
+    >
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-5 border-b border-[#ECEAE3]">
+        <div>
+          <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#2D6A4F]">
+            <Zap className="w-3.5 h-3.5" />
+            <span>Interactive 2D System Schematic</span>
+          </div>
+          <h3 className="text-lg sm:text-xl font-bold text-[#1B3B2B] mt-0.5">
+            Hybrid Solar–Wind Power Routing &amp; Storage Diagram
+          </h3>
+          <p className="text-xs sm:text-sm text-[#454F4A] mt-0.5">
+            Tap or click any block below to inspect its function and focus the
+            3D camera on that hardware stage.
+          </p>
+        </div>
+
+        {/* Color Legend */}
+        <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 text-amber-900 border border-amber-300">
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
+            Solar
+          </span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-50 text-cyan-900 border border-cyan-300">
+            <span className="w-2 h-2 rounded-full bg-cyan-500" />
+            Wind
+          </span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-900 border border-emerald-300">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            Battery Storage
+          </span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-yellow-50 text-yellow-900 border border-yellow-400">
+            <span className="w-2 h-2 rounded-full bg-yellow-400" />
+            LED Lamp
+          </span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 text-blue-900 border border-blue-300">
+            <span className="w-2 h-2 rounded-full bg-blue-500" />
+            USB Charging
+          </span>
         </div>
       </div>
 
-      {/* CAMERA PRESET PILLS */}
-      <div
-        className="mt-4 flex sm:flex-wrap items-center gap-2 overflow-x-auto pb-1.5 sm:pb-0 no-scrollbar"
-        role="group"
-        aria-label="Camera view presets"
-      >
-        {CAMERA_PRESETS.map((preset) => {
-          const isActive = activePreset === preset.id;
-          return (
+      {/* 2D DIAGRAM FLOW PATHWAYS */}
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-11 gap-4 items-center">
+        {/* COLUMN 1: GENERATION + CONVERSION PATHS (SOLAR & WIND) */}
+        <div className="lg:col-span-5 space-y-4">
+          {/* PATH 1: Solar Panel → Solar Charge Controller */}
+          <div className="p-3.5 rounded-2xl bg-amber-50/60 border border-amber-200/80">
+            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-amber-900 mb-2.5">
+              <span>Path 1 • Solar Harvesting</span>
+              <span>{periodInfo.isDay ? 'Active (Daylight)' : 'Standby (Night)'}</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-11 gap-2 items-center">
+              <button
+                type="button"
+                onClick={() => handleNodeClick('solar_panel', 'solar')}
+                aria-pressed={isHighlighted('solar_panel', 'solar')}
+                className={`sm:col-span-5 w-full text-left p-3 min-h-[64px] rounded-xl border-2 transition-all ${
+                  isHighlighted('solar_panel', 'solar')
+                    ? 'bg-amber-500 text-white border-amber-700 shadow-md scale-[1.01]'
+                    : 'bg-white hover:bg-amber-50 text-[#1F2421] border-amber-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Sun
+                    className={`w-4 h-4 shrink-0 ${
+                      isHighlighted('solar_panel', 'solar')
+                        ? 'text-white'
+                        : 'text-amber-600'
+                    }`}
+                  />
+                  <span className="text-xs sm:text-sm font-bold leading-tight">
+                    Solar Panel
+                  </span>
+                </div>
+                <span
+                  className={`block text-[11px] mt-1 ${
+                    isHighlighted('solar_panel', 'solar')
+                      ? 'text-amber-50'
+                      : 'text-[#525B56]'
+                  }`}
+                >
+                  Fixed-tilt canopy array
+                </span>
+              </button>
+
+              <div
+                className="sm:col-span-1 flex items-center justify-center py-0.5 sm:py-0"
+                aria-hidden="true"
+              >
+                <span className="text-amber-600 font-bold text-sm sm:rotate-0 rotate-90">
+                  →
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleNodeClick('solar_controller', 'battery')}
+                aria-pressed={isHighlighted('solar_controller', 'battery')}
+                className={`sm:col-span-5 w-full text-left p-3 min-h-[64px] rounded-xl border-2 transition-all ${
+                  activeNodeKey === 'solar_controller'
+                    ? 'bg-amber-600 text-white border-amber-800 shadow-md scale-[1.01]'
+                    : 'bg-white hover:bg-amber-50 text-[#1F2421] border-amber-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Sliders
+                    className={`w-4 h-4 shrink-0 ${
+                      activeNodeKey === 'solar_controller'
+                        ? 'text-white'
+                        : 'text-amber-600'
+                    }`}
+                  />
+                  <span className="text-xs sm:text-sm font-bold leading-tight">
+                    Solar Charge Controller
+                  </span>
+                </div>
+                <span
+                  className={`block text-[11px] mt-1 ${
+                    activeNodeKey === 'solar_controller'
+                      ? 'text-amber-50'
+                      : 'text-[#525B56]'
+                  }`}
+                >
+                  MPPT DC regulation
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* PATH 2: Wind Turbine → Wind Power Conversion */}
+          <div className="p-3.5 rounded-2xl bg-cyan-50/60 border border-cyan-200/80">
+            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-cyan-900 mb-2.5">
+              <span>Path 2 • Wind Harvesting</span>
+              <span>Complementary Source</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-11 gap-2 items-center">
+              <button
+                type="button"
+                onClick={() => handleNodeClick('wind_turbine', 'turbine')}
+                aria-pressed={isHighlighted('wind_turbine', 'turbine')}
+                className={`sm:col-span-5 w-full text-left p-3 min-h-[64px] rounded-xl border-2 transition-all ${
+                  isHighlighted('wind_turbine', 'turbine')
+                    ? 'bg-cyan-600 text-white border-cyan-800 shadow-md scale-[1.01]'
+                    : 'bg-white hover:bg-cyan-50 text-[#1F2421] border-cyan-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Wind
+                    className={`w-4 h-4 shrink-0 ${
+                      isHighlighted('wind_turbine', 'turbine')
+                        ? 'text-white'
+                        : 'text-cyan-600'
+                    }`}
+                  />
+                  <span className="text-xs sm:text-sm font-bold leading-tight">
+                    Wind Turbine
+                  </span>
+                </div>
+                <span
+                  className={`block text-[11px] mt-1 ${
+                    isHighlighted('wind_turbine', 'turbine')
+                      ? 'text-cyan-50'
+                      : 'text-[#525B56]'
+                  }`}
+                >
+                  Rear-facing 3-blade rotor
+                </span>
+              </button>
+
+              <div
+                className="sm:col-span-1 flex items-center justify-center py-0.5 sm:py-0"
+                aria-hidden="true"
+              >
+                <span className="text-cyan-600 font-bold text-sm sm:rotate-0 rotate-90">
+                  →
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleNodeClick('wind_conversion', 'battery')}
+                aria-pressed={activeNodeKey === 'wind_conversion'}
+                className={`sm:col-span-5 w-full text-left p-3 min-h-[64px] rounded-xl border-2 transition-all ${
+                  activeNodeKey === 'wind_conversion'
+                    ? 'bg-cyan-700 text-white border-cyan-900 shadow-md scale-[1.01]'
+                    : 'bg-white hover:bg-cyan-50 text-[#1F2421] border-cyan-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Zap
+                    className={`w-4 h-4 shrink-0 ${
+                      activeNodeKey === 'wind_conversion'
+                        ? 'text-white'
+                        : 'text-cyan-600'
+                    }`}
+                  />
+                  <span className="text-xs sm:text-sm font-bold leading-tight">
+                    Wind Power Conversion
+                  </span>
+                </div>
+                <span
+                  className={`block text-[11px] mt-1 ${
+                    activeNodeKey === 'wind_conversion'
+                      ? 'text-cyan-50'
+                      : 'text-[#525B56]'
+                  }`}
+                >
+                  Rectifier &amp; wind controller
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* CONNECTOR ARROWS INTO BATTERY */}
+        <div
+          className="lg:col-span-1 flex flex-col items-center justify-center py-1 lg:py-0"
+          aria-hidden="true"
+        >
+          <div className="hidden lg:flex flex-col items-center gap-6 text-emerald-700 font-bold text-lg">
+            <span>↘</span>
+            <span>↗</span>
+          </div>
+          <div className="lg:hidden text-emerald-700 font-bold text-base">↓</div>
+        </div>
+
+        {/* COLUMN 2: CENTRAL BATTERY STORAGE HUB */}
+        <div className="lg:col-span-2">
+          <button
+            type="button"
+            onClick={() => handleNodeClick('battery_hub', 'battery')}
+            aria-pressed={
+              selectedComponentId === 'battery' &&
+              activeNodeKey !== 'usb_station' &&
+              activeNodeKey !== 'solar_controller' &&
+              activeNodeKey !== 'wind_conversion'
+            }
+            className={`w-full text-left p-4 sm:p-5 min-h-[110px] rounded-2xl border-2 transition-all ${
+              selectedComponentId === 'battery' &&
+              activeNodeKey !== 'usb_station'
+                ? 'bg-emerald-700 text-white border-emerald-900 shadow-lg scale-[1.02]'
+                : 'bg-emerald-50/90 hover:bg-emerald-100/80 text-[#1B3B2B] border-emerald-400'
+            }`}
+          >
+            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-900/15 text-[10px] font-bold uppercase tracking-wider mb-2">
+              <span>Central Storage</span>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <BatteryCharging
+                className={`w-6 h-6 shrink-0 ${
+                  selectedComponentId === 'battery' &&
+                  activeNodeKey !== 'usb_station'
+                    ? 'text-emerald-200'
+                    : 'text-emerald-700'
+                }`}
+              />
+              <div>
+                <span className="block text-sm sm:text-base font-bold leading-tight">
+                  Battery
+                </span>
+                <span
+                  className={`block text-[11px] mt-0.5 ${
+                    selectedComponentId === 'battery' &&
+                    activeNodeKey !== 'usb_station'
+                      ? 'text-emerald-100'
+                      : 'text-[#37403B]'
+                  }`}
+                >
+                  LiFePO₄ Reserve + Breakers
+                </span>
+              </div>
+            </div>
+          </button>
+        </div>
+
+        {/* CONNECTOR ARROWS OUT OF BATTERY */}
+        <div
+          className="lg:col-span-1 flex flex-col items-center justify-center py-1 lg:py-0"
+          aria-hidden="true"
+        >
+          <div className="hidden lg:flex flex-col items-center gap-6 text-emerald-700 font-bold text-lg">
+            <span>↗</span>
+            <span>↘</span>
+          </div>
+          <div className="lg:hidden text-emerald-700 font-bold text-base">↓</div>
+        </div>
+
+        {/* COLUMN 3: PUBLIC OUTPUT LOADS (LED STREETLIGHT & USB CHARGING STATION) */}
+        <div className="lg:col-span-2 space-y-4">
+          {/* OUTPUT 1: Battery → LED Streetlight */}
+          <div className="p-3 rounded-2xl bg-yellow-50/70 border border-yellow-300">
+            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-yellow-900 mb-1.5">
+              <span>Night Illumination</span>
+              <span>{periodInfo.isNight ? 'ON' : 'Standby'}</span>
+            </div>
             <button
-              key={preset.id}
               type="button"
-              onClick={() => onSelectPreset(preset)}
-              className={`px-3.5 py-2 sm:px-4 sm:py-2 rounded-full text-xs sm:text-sm font-medium transition-colors border shrink-0 whitespace-nowrap ${
-                isActive
-                  ? 'bg-[#1D4332] text-white border-[#1D4332] shadow-sm'
-                  : 'bg-[#F7F6F2] hover:bg-[#EAE7DF] text-[#1F2421] border-[#D5D2C9]'
+              onClick={() => handleNodeClick('led_lamp', 'lamp')}
+              aria-pressed={selectedComponentId === 'lamp'}
+              className={`w-full text-left p-3 min-h-[64px] rounded-xl border-2 transition-all ${
+                selectedComponentId === 'lamp'
+                  ? 'bg-yellow-400 text-[#1F2421] border-yellow-600 shadow-md scale-[1.01]'
+                  : 'bg-white hover:bg-yellow-50 text-[#1F2421] border-yellow-400'
               }`}
             >
-              {preset.label}
+              <div className="flex items-center gap-2">
+                <Lightbulb className="w-4 h-4 text-yellow-600 shrink-0" />
+                <span className="text-xs sm:text-sm font-bold leading-tight">
+                  LED Streetlight
+                </span>
+              </div>
+              <span className="block text-[11px] text-[#525B56] mt-1">
+                Switched by top photocell
+              </span>
             </button>
-          );
-        })}
+          </div>
+
+          {/* OUTPUT 2: Battery → USB Charging Station */}
+          <div className="p-3 rounded-2xl bg-blue-50/70 border border-blue-200">
+            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-blue-900 mb-1.5">
+              <span>Public Utility</span>
+              <span>Regulated DC</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleNodeClick('usb_station', 'battery')}
+              aria-pressed={activeNodeKey === 'usb_station'}
+              className={`w-full text-left p-3 min-h-[64px] rounded-xl border-2 transition-all ${
+                activeNodeKey === 'usb_station'
+                  ? 'bg-blue-600 text-white border-blue-800 shadow-md scale-[1.01]'
+                  : 'bg-white hover:bg-blue-50 text-[#1F2421] border-blue-300'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Usb
+                  className={`w-4 h-4 shrink-0 ${
+                    activeNodeKey === 'usb_station'
+                      ? 'text-white'
+                      : 'text-blue-600'
+                  }`}
+                />
+                <span className="text-xs sm:text-sm font-bold leading-tight">
+                  USB Charging Station
+                </span>
+              </div>
+              <span
+                className={`block text-[11px] mt-1 ${
+                  activeNodeKey === 'usb_station'
+                    ? 'text-blue-100'
+                    : 'text-[#525B56]'
+                }`}
+              >
+                Roadside mobile charging
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Screen-Reader & Quick Text Summary of the 4 Pathways */}
+      <div className="mt-5 pt-4 border-t border-[#ECEAE3] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs text-[#37403B]">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#F7F6F2]">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
+          <span>
+            <strong>Solar Panel</strong> → Controller → <strong>Battery</strong>
+          </span>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#F7F6F2]">
+          <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 shrink-0" />
+          <span>
+            <strong>Wind Turbine</strong> → Conversion → <strong>Battery</strong>
+          </span>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#F7F6F2]">
+          <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 border border-yellow-600 shrink-0" />
+          <span>
+            <strong>Battery</strong> → <strong>LED Streetlight</strong>
+          </span>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#F7F6F2]">
+          <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" />
+          <span>
+            <strong>Battery</strong> → <strong>USB Charging Station</strong>
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -2322,11 +3524,24 @@ export default function App() {
   const [activePreset, setActivePreset] = useState('whole');
   const [selectedComponentId, setSelectedComponentId] = useState('solar');
   const [showLabels, setShowLabels] = useState(true);
+  const [showAllLabels, setShowAllLabels] = useState(false);
   const [showEnergyFlow, setShowEnergyFlow] = useState(true);
   const [showPerson, setShowPerson] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
   const [telemetryScenarioKey, setTelemetryScenarioKey] =
     useState('night_operational');
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setPrefersReducedMotion(mediaQuery.matches);
+    const listener = (event) => setPrefersReducedMotion(event.matches);
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', listener);
+      return () => mediaQuery.removeEventListener('change', listener);
+    }
+  }, []);
 
   useEffect(() => {
     if (!isPlaying) return;
@@ -2411,6 +3626,69 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#F7F6F2] text-[#1F2421] font-sans antialiased selection:bg-[#1B3B2B] selection:text-white">
+      <style>{`
+        @keyframes heroFadeUp {
+          0% {
+            opacity: 0;
+            transform: translateY(14px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        @keyframes heroFloatSlow {
+          0%, 100% {
+            transform: translateY(0px);
+          }
+          50% {
+            transform: translateY(-4px);
+          }
+        }
+        @keyframes heroWindDrift {
+          0%, 100% {
+            transform: translateX(0px);
+          }
+          50% {
+            transform: translateX(6px);
+          }
+        }
+        @keyframes heroTreeSway {
+          0%, 100% {
+            transform: rotate(0deg);
+          }
+          50% {
+            transform: rotate(0.8deg);
+          }
+        }
+        .hero-fade-up {
+          animation: heroFadeUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .hero-fade-up-delay {
+          animation: heroFadeUp 0.85s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both;
+        }
+        .hero-float-slow {
+          animation: heroFloatSlow 6s ease-in-out infinite;
+        }
+        .hero-wind-drift {
+          animation: heroWindDrift 5s ease-in-out infinite;
+        }
+        .hero-tree-sway {
+          transform-origin: center bottom;
+          animation: heroTreeSway 7s ease-in-out infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .hero-fade-up,
+          .hero-fade-up-delay,
+          .hero-float-slow,
+          .hero-wind-drift,
+          .hero-tree-sway {
+            animation: none !important;
+            transform: none !important;
+          }
+        }
+      `}</style>
+
       {/* SECTION 1: NAVIGATION BAR */}
       <header className="sticky top-0 z-40 h-16 bg-[#F7F6F2]/95 backdrop-blur-md border-b border-[#E2DFD7]">
         <div className="max-w-7xl mx-auto h-full px-4 sm:px-6 lg:px-8 flex items-center justify-between">
@@ -2477,7 +3755,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setQrModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#1B3B2B] hover:bg-[#143022] text-white text-xs font-semibold transition-colors shadow-2xs"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#1B3B2B] hover:bg-[#143022] text-white text-xs font-semibold transition-colors shadow-2xs"
             >
               <QrCode className="w-3.5 h-3.5 text-[#E5A93B]" />
               <span>Public QR Code</span>
@@ -2485,35 +3763,48 @@ export default function App() {
             <button
               type="button"
               onClick={() => scrollToSection('facility-status')}
-              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-[#EAE7DF] hover:bg-[#DFDCD2] text-[#1B3B2B] text-xs font-semibold transition-colors"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-[#EAE7DF] hover:bg-[#DFDCD2] text-[#1B3B2B] text-xs font-semibold transition-colors"
             >
               <span className="w-2 h-2 rounded-full bg-[#2D6A4F]" />
               <span>Check the Facility</span>
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setMobileMenuOpen((prev) => !prev)}
-            className="md:hidden p-2 rounded-lg text-[#1F2421] hover:bg-[#EAE7DF] focus:outline-none"
-            aria-label="Toggle navigation menu"
-            aria-expanded={mobileMenuOpen}
-          >
-            {mobileMenuOpen ? (
-              <X className="w-6 h-6" />
-            ) : (
-              <Menu className="w-6 h-6" />
-            )}
-          </button>
+          {/* Mobile Quick QR + Menu Actions so QR Code is always 1 tap away */}
+          <div className="flex md:hidden items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setQrModalOpen(true)}
+              aria-label="Open Public QR Code"
+              className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[40px] rounded-lg bg-[#1B3B2B] text-white text-xs font-semibold shadow-2xs"
+            >
+              <QrCode className="w-3.5 h-3.5 text-[#E5A93B]" />
+              <span>QR</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              className="p-2.5 min-h-[40px] rounded-lg text-[#1F2421] hover:bg-[#EAE7DF] focus:outline-none"
+              aria-label="Toggle navigation menu"
+              aria-expanded={mobileMenuOpen}
+            >
+              {mobileMenuOpen ? (
+                <X className="w-6 h-6" />
+              ) : (
+                <Menu className="w-6 h-6" />
+              )}
+            </button>
+          </div>
         </div>
 
         {mobileMenuOpen && (
           <div className="md:hidden bg-[#F7F6F2] border-b border-[#D8D5CD] px-4 pt-2 pb-5 space-y-2 shadow-lg">
             {[
               { id: 'home', label: 'Home' },
-              { id: 'explore-system', label: 'Explore System' },
-              { id: 'energy-flow', label: 'Energy Flow' },
               { id: 'facility-status', label: 'Check the Facility' },
+              { id: 'explore-system', label: 'Explore 3D System' },
+              { id: 'energy-flow', label: '2D Energy Flow Diagram' },
               { id: 'community', label: 'Community' },
               { id: 'about-project', label: 'About the Project' }
             ].map((item) => (
@@ -2521,7 +3812,7 @@ export default function App() {
                 key={item.id}
                 type="button"
                 onClick={() => scrollToSection(item.id)}
-                className="block w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-[#1F2421] hover:bg-[#EAE7DF]"
+                className="block w-full text-left px-3 py-2.5 min-h-[42px] rounded-lg text-sm font-medium text-[#1F2421] hover:bg-[#EAE7DF]"
               >
                 {item.label}
               </button>
@@ -2532,7 +3823,7 @@ export default function App() {
                 setMobileMenuOpen(false);
                 setQrModalOpen(true);
               }}
-              className="w-full mt-2 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#1B3B2B] text-white text-sm font-semibold"
+              className="w-full mt-2 inline-flex items-center justify-center gap-2 px-4 py-3 min-h-[44px] rounded-xl bg-[#1B3B2B] text-white text-sm font-semibold"
             >
               <QrCode className="w-4 h-4 text-[#E5A93B]" />
               <span>Open Public QR Code</span>
@@ -2542,61 +3833,193 @@ export default function App() {
       </header>
 
       <main>
-        {/* SECTION 2: HERO INTRODUCTION */}
+        {/* SECTION 2: HERO INTRODUCTION (Two-Column Balanced Layout on Desktop, Stacked on Mobile) */}
         <section
           id="home"
-          className="pt-10 pb-8 sm:pt-14 sm:pb-10 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto"
+          className="pt-6 pb-8 sm:pt-10 sm:pb-10 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto"
         >
-          <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-[#EAE7DF] border border-[#D8D5CD] text-[#1B3B2B] text-xs font-semibold tracking-wide uppercase mb-4">
-              <MapPin className="w-3.5 h-3.5 text-[#2D6A4F]" />
-              <span>Macopoy, Mascap, Rodriguez, Rizal</span>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
+            {/* Left Column: Headline, Description, and Primary Actions */}
+            <div className="lg:col-span-6 hero-fade-up">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-[#EAE7DF] border border-[#D8D5CD] text-[#1B3B2B] text-xs font-semibold tracking-wide uppercase mb-4">
+                <MapPin className="w-3.5 h-3.5 text-[#2D6A4F]" />
+                <span>Macopoy, Mascap, Rodriguez, Rizal</span>
+              </div>
+
+              <h1 className="text-3xl sm:text-5xl font-bold tracking-tight text-[#1B3B2B] leading-[1.12]">
+                Clean Energy. A Brighter Community.
+              </h1>
+
+              <p className="mt-4 text-base sm:text-lg text-[#454F4A] leading-relaxed max-w-2xl">
+                Discover how solar and wind energy can power safer streets, public
+                phone charging, and a place to rest in Macopoy, Mascap.
+              </p>
+
+              <div className="mt-6 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => scrollToSection('explore-system')}
+                  className="inline-flex items-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-[#1B3B2B] hover:bg-[#153023] text-white text-sm font-semibold transition-colors shadow-xs"
+                >
+                  <span>Explore the Installation</span>
+                  <ArrowDown className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => scrollToSection('energy-flow')}
+                  className="inline-flex items-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-white hover:bg-[#EAE7DF] text-[#1F2421] border border-[#D5D2C9] text-sm font-semibold transition-colors"
+                >
+                  <span>2D Energy Diagram</span>
+                  <ChevronRight className="w-4 h-4 text-[#525B56]" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setQrModalOpen(true)}
+                  className="inline-flex items-center gap-2 px-4 py-3 min-h-[44px] rounded-xl bg-[#EAE7DF] hover:bg-[#DFDCD2] text-[#1B3B2B] border border-[#D5D2C9] text-sm font-semibold transition-colors"
+                >
+                  <QrCode className="w-4 h-4 text-[#2D6A4F]" />
+                  <span>Get Roadside QR Sticker</span>
+                </button>
+              </div>
             </div>
 
-            <h1 className="text-3xl sm:text-5xl font-bold tracking-tight text-[#1B3B2B] leading-[1.12]">
-              Clean Energy. A Brighter Community.
-            </h1>
-
-            <p className="mt-4 text-base sm:text-lg text-[#454F4A] leading-relaxed max-w-2xl">
-              Discover how solar and wind energy can power safer streets, public
-              phone charging, and a place to rest in Macopoy, Mascap.
-            </p>
-
-            <div className="mt-6 flex flex-wrap items-center gap-3.5">
-              <button
-                type="button"
-                onClick={() => scrollToSection('explore-system')}
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#1B3B2B] hover:bg-[#153023] text-white text-sm font-semibold transition-colors shadow-xs"
-              >
-                <span>Explore the Installation</span>
-                <ArrowDown className="w-4 h-4" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => scrollToSection('energy-flow')}
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white hover:bg-[#EAE7DF] text-[#1F2421] border border-[#D5D2C9] text-sm font-semibold transition-colors"
-              >
-                <span>How It Works</span>
-                <ChevronRight className="w-4 h-4 text-[#525B56]" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setQrModalOpen(true)}
-                className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-[#EAE7DF] hover:bg-[#DFDCD2] text-[#1B3B2B] border border-[#D5D2C9] text-sm font-semibold transition-colors"
-              >
-                <QrCode className="w-4 h-4 text-[#2D6A4F]" />
-                <span>Get Roadside QR Sticker</span>
-              </button>
+            {/* Right Column (Below text on mobile): Lightweight Interactive Architectural Preview */}
+            <div className="lg:col-span-6 hero-fade-up-delay">
+              <HeroInstallationPreview
+                prefersReducedMotion={prefersReducedMotion}
+                onSelectComponentAndScroll={(compId) => {
+                  handleSelectComponent(compId);
+                  scrollToSection('explore-system');
+                }}
+                onPreviewNightMode={(isNight) => {
+                  setIsPlaying(false);
+                  setTimeMinutes(isNight ? 1320 : 658);
+                  scrollToSection('explore-system');
+                }}
+              />
             </div>
           </div>
         </section>
 
-        {/* SECTION 3: INTERACTIVE 3D INSTALLATION */}
+        {/* SECTION 3: CHECK THE FACILITY (Moved near the top for immediate commuter access on mobile & desktop) */}
+        <section
+          id="facility-status"
+          className="py-8 sm:py-12 bg-[#EFECE6] border-y border-[#DFDCD3] px-4 sm:px-6 lg:px-8 scroll-mt-16"
+        >
+          <div className="max-w-7xl mx-auto">
+            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5">
+              <div className="max-w-2xl">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-[#FEF3C7] border border-[#F59E0B]/40 text-[#92400E] text-xs font-semibold mb-2.5">
+                  <Info className="w-3.5 h-3.5" />
+                  <span>Demonstration Mode — Simulated Public Status Layer</span>
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-bold text-[#1B3B2B] tracking-tight">
+                  Check the Facility
+                </h2>
+                <p className="mt-1.5 text-sm sm:text-base text-[#454F4A] leading-relaxed">
+                  Check the availability of the streetlight and public USB charging
+                  station. Because the physical ESP32 sensor telemetry is not yet
+                  connected, the cards below display clearly labeled demonstration
+                  states.
+                </p>
+              </div>
+
+              <div className="bg-white p-3.5 rounded-2xl border border-[#D8D5CD] shadow-2xs">
+                <label
+                  htmlFor="telemetry-scenario-picker"
+                  className="block text-[11px] font-bold uppercase tracking-wider text-[#525B56] mb-1.5"
+                >
+                  Preview Telemetry State (Demo Layer):
+                </label>
+                <select
+                  id="telemetry-scenario-picker"
+                  value={telemetryScenarioKey}
+                  onChange={(e) => setTelemetryScenarioKey(e.target.value)}
+                  className="w-full sm:w-72 px-3 py-2.5 min-h-[42px] rounded-xl bg-[#F7F6F2] border border-[#D5D2C9] text-xs sm:text-sm font-semibold text-[#1B3B2B] focus:outline-none focus:ring-2 focus:ring-[#1B3B2B]"
+                >
+                  <option value="night_operational">
+                    1. Operational &amp; Available (Night Demo)
+                  </option>
+                  <option value="day_standby">
+                    2. Daytime Standby &amp; Port In Use (Demo)
+                  </option>
+                  <option value="unverified_hardware">
+                    3. Unknown Status (Unverified Sensor Feedback)
+                  </option>
+                  <option value="esp32_offline">
+                    4. Offline / Stale ESP32 Data Timeout
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            {currentTelemetry.isStale && (
+              <div className="mt-5 p-4 rounded-xl bg-[#FEF2F2] border border-[#FECACA] flex items-center gap-3 text-xs sm:text-sm text-[#991B1B]">
+                <WifiOff className="w-5 h-5 shrink-0" />
+                <div>
+                  <strong>Status unavailable:</strong> The website has not received
+                  recent telemetry from the ESP32 microcontroller (
+                  {currentTelemetry.lastUpdatedText}). Misleading green indicators
+                  are suppressed until fresh hardware data arrives.
+                </div>
+              </div>
+            )}
+
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+              <StatusCard
+                category="Roadside Illumination"
+                title="Streetlight Status"
+                icon={Lightbulb}
+                stateLabel={currentTelemetry.streetlight.state}
+                statusKey={currentTelemetry.streetlight.statusKey}
+                summary={currentTelemetry.streetlight.summary}
+                detail={currentTelemetry.streetlight.detail}
+                lastUpdated={currentTelemetry.lastUpdatedText}
+                possibleStates={['Operational', 'Not operating', 'Unknown', 'Offline']}
+              />
+
+              <StatusCard
+                category="Mobile Device Charging"
+                title="Public Charging Status"
+                icon={Usb}
+                stateLabel={currentTelemetry.charging.state}
+                statusKey={currentTelemetry.charging.statusKey}
+                summary={currentTelemetry.charging.summary}
+                detail={currentTelemetry.charging.detail}
+                lastUpdated={currentTelemetry.lastUpdatedText}
+                possibleStates={[
+                  'Available',
+                  'In use',
+                  'Unavailable',
+                  'Unknown',
+                  'Offline'
+                ]}
+              />
+            </div>
+
+            <div className="mt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-xl bg-white/80 border border-[#D8D5CD] text-xs text-[#525B56]">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-[#1B3B2B] shrink-0" />
+                <span>
+                  <strong>Telemetry readiness:</strong> Actual status verification
+                  depends on installed monitoring hardware (e.g., load-current or
+                  voltage sensing wired to the ESP32), rather than assuming a
+                  component works solely from a software command.
+                </span>
+              </div>
+              <span className="font-mono text-[11px] text-[#1B3B2B] shrink-0">
+                Source: src/data/demoTelemetry
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {/* SECTION 4: INTERACTIVE 3D INSTALLATION */}
         <section
           id="explore-system"
-          className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto scroll-mt-16"
+          className="py-8 sm:py-10 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto scroll-mt-16"
         >
           <div className="bg-[#EFECE4] rounded-3xl p-4 sm:p-6 lg:p-8 border border-[#DFDCD3] shadow-xs">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-5">
@@ -2611,31 +4034,8 @@ export default function App() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowPerson((prev) => !prev)}
-                  aria-pressed={showPerson}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                    showPerson
-                      ? 'bg-[#E5A93B] text-[#1F2421] border-[#d99726] shadow-2xs'
-                      : 'bg-white text-[#1B3B2B] border-[#D5D2C9] hover:bg-[#F7F6F2]'
-                  }`}
-                >
-                  {showPerson ? (
-                    <>
-                      <UserCheck className="w-3.5 h-3.5" />
-                      <span>Remove Person on Bench</span>
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="w-3.5 h-3.5" />
-                      <span>Add Person (Bench + Charging)</span>
-                    </>
-                  )}
-                </button>
-
-                <span className="text-xs font-medium text-[#525B56] ml-1 mr-1">
-                  Quick Time:
+                <span className="text-xs font-medium text-[#525B56] mr-1">
+                  Lighting Presets:
                 </span>
                 <button
                   type="button"
@@ -2643,8 +4043,8 @@ export default function App() {
                     setIsPlaying(false);
                     setTimeMinutes(658);
                   }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                    timeMinutes >= 360 && timeMinutes < 1020
+                  className={`px-3 py-2 min-h-[38px] rounded-lg text-xs font-semibold border transition-colors ${
+                    timeMinutes >= 360 && timeMinutes < 1005
                       ? 'bg-[#1B3B2B] text-white border-[#1B3B2B]'
                       : 'bg-white text-[#1F2421] border-[#D5D2C9] hover:bg-[#F7F6F2]'
                   }`}
@@ -2657,8 +4057,8 @@ export default function App() {
                     setIsPlaying(false);
                     setTimeMinutes(1065);
                   }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                    timeMinutes >= 1020 && timeMinutes < 1140
+                  className={`px-3 py-2 min-h-[38px] rounded-lg text-xs font-semibold border transition-colors ${
+                    timeMinutes >= 1005 && timeMinutes < 1140
                       ? 'bg-[#1B3B2B] text-white border-[#1B3B2B]'
                       : 'bg-white text-[#1F2421] border-[#D5D2C9] hover:bg-[#F7F6F2]'
                   }`}
@@ -2669,15 +4069,16 @@ export default function App() {
                   type="button"
                   onClick={() => {
                     setIsPlaying(false);
-                    setTimeMinutes(1439);
+                    setTimeMinutes(1320);
                   }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                  className={`inline-flex items-center gap-1.5 px-3 py-2 min-h-[38px] rounded-lg text-xs font-semibold border transition-colors ${
                     timeMinutes >= 1140 || timeMinutes < 360
                       ? 'bg-[#1B3B2B] text-white border-[#1B3B2B]'
                       : 'bg-white text-[#1F2421] border-[#D5D2C9] hover:bg-[#F7F6F2]'
                   }`}
                 >
-                  Night (11:59 PM)
+                  <Moon className="w-3.5 h-3.5 text-[#E5A93B]" />
+                  <span>Night Mode (10:00 PM)</span>
                 </button>
               </div>
             </div>
@@ -2698,15 +4099,21 @@ export default function App() {
               onSelectComponent={handleSelectComponent}
               showLabels={showLabels}
               onToggleLabels={() => setShowLabels((l) => !l)}
+              showAllLabels={showAllLabels}
+              onToggleShowAllLabels={setShowAllLabels}
               showEnergyFlow={showEnergyFlow}
               onToggleEnergyFlow={() => setShowEnergyFlow((f) => !f)}
               showPerson={showPerson}
               onTogglePerson={() => setShowPerson((p) => !p)}
               onResetView={handleResetView}
+              prefersReducedMotion={prefersReducedMotion}
             />
 
             {/* CLICKABLE COMPONENT INFORMATION PANEL */}
-            <div className="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+            <div
+              id="component-inspector-panel"
+              className="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch"
+            >
               <div className="lg:col-span-8 bg-white rounded-2xl p-5 sm:p-6 border border-[#DCD9D0] flex flex-col justify-between">
                 <div>
                   <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-[#ECEAE3]">
@@ -2724,15 +4131,15 @@ export default function App() {
                     </span>
                   </div>
 
-                  <div className="flex flex-wrap gap-1.5 mt-4">
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:flex-wrap mt-4 no-scrollbar">
                     {Object.values(SYSTEM_COMPONENTS).map((comp) => (
                       <button
                         key={comp.id}
                         type="button"
                         onClick={() => handleSelectComponent(comp.id)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        className={`inline-flex items-center gap-1.5 px-3 py-2 min-h-[38px] rounded-lg text-xs font-medium transition-colors shrink-0 ${
                           selectedComponentId === comp.id
-                            ? 'bg-[#1B3B2B] text-white'
+                            ? 'bg-[#1B3B2B] text-white font-semibold'
                             : 'bg-[#F7F6F2] text-[#37403B] hover:bg-[#EAE7DF]'
                         }`}
                       >
@@ -2846,12 +4253,12 @@ export default function App() {
           </div>
         </section>
 
-        {/* SECTION 5: WHERE THE ENERGY GOES */}
+        {/* SECTION 5: WHERE THE ENERGY GOES (Now featuring the Interactive 2D System Diagram) */}
         <section
           id="energy-flow"
-          className="py-16 sm:py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto scroll-mt-16"
+          className="py-12 sm:py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto scroll-mt-16"
         >
-          <div className="max-w-3xl">
+          <div className="max-w-3xl mb-8">
             <span className="text-xs font-semibold uppercase tracking-wider text-[#2D6A4F]">
               System Architecture &amp; Conversion Stages
             </span>
@@ -2865,7 +4272,18 @@ export default function App() {
             </p>
           </div>
 
-          <div className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative">
+          {/* Interactive 2D System Diagram */}
+          <Interactive2DEnergyDiagram
+            selectedComponentId={selectedComponentId}
+            onSelectComponent={(compId) => {
+              handleSelectComponent(compId);
+              scrollToSection('explore-system');
+            }}
+            timeMinutes={timeMinutes}
+            prefersReducedMotion={prefersReducedMotion}
+          />
+
+          <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative">
             {ENERGY_FLOW_STAGES.map((stage, idx) => (
               <div
                 key={stage.stageNumber}
@@ -2922,10 +4340,10 @@ export default function App() {
                               handleSelectComponent(item.componentRef);
                               scrollToSection('explore-system');
                             }}
-                            className="mt-2.5 inline-flex items-center gap-1 text-[11px] font-semibold text-[#1B3B2B] hover:underline"
+                            className="mt-2.5 inline-flex items-center gap-1 py-1 text-xs font-semibold text-[#1B3B2B] hover:underline"
                           >
                             <span>Locate in 3D scene</span>
-                            <ChevronRight className="w-3 h-3" />
+                            <ChevronRight className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       );
@@ -2960,149 +4378,36 @@ export default function App() {
               </p>
             </div>
           </div>
-        </section>
 
-        {/* SECTION 6: CHECK THE FACILITY */}
-        <section
-          id="facility-status"
-          className="py-16 sm:py-20 bg-[#EFECE6] border-y border-[#DFDCD3] px-4 sm:px-6 lg:px-8 scroll-mt-16"
-        >
-          <div className="max-w-7xl mx-auto">
-            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
-              <div className="max-w-2xl">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-[#FEF3C7] border border-[#F59E0B]/40 text-[#92400E] text-xs font-semibold mb-3">
-                  <Info className="w-3.5 h-3.5" />
-                  <span>Demonstration Mode — Simulated Public Status Layer</span>
-                </div>
-                <h2 className="text-3xl sm:text-4xl font-bold text-[#1B3B2B] tracking-tight">
-                  Check the Facility
-                </h2>
-                <p className="mt-2.5 text-base text-[#454F4A] leading-relaxed">
-                  This section is designed to help residents and commuters check
-                  the availability of the streetlight and public USB charging
-                  station. Because the physical ESP32 sensor telemetry is not yet
-                  connected, the cards below display clearly labeled demonstration
-                  states.
+          {/* QR Code Banner for Roadside Access */}
+          <div className="mt-6 bg-[#1B3B2B] text-white rounded-2xl p-5 sm:p-6 border border-[#143022] flex flex-col md:flex-row items-start md:items-center justify-between gap-5 shadow-xs">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center text-[#E5A93B] shrink-0">
+                <QrCode className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#A7F3D0]">
+                  On-Site Community Access • Weatherproof Pole Plaque
+                </span>
+                <h3 className="text-lg sm:text-xl font-bold mt-0.5">
+                  Scan at the Streetlight Pole to Open This Public Dashboard
+                </h3>
+                <p className="mt-1 text-xs sm:text-sm text-white/80 max-w-2xl leading-relaxed">
+                  A printed QR code plaque mounted on the yellow battery and USB
+                  charging enclosure lets residents, students, and commuters open
+                  this 3D guide and facility status page directly on their phones.
                 </p>
               </div>
-
-              <div className="bg-white p-3.5 rounded-2xl border border-[#D8D5CD] shadow-2xs">
-                <label
-                  htmlFor="telemetry-scenario-picker"
-                  className="block text-[11px] font-bold uppercase tracking-wider text-[#525B56] mb-1.5"
-                >
-                  Preview Telemetry State (Demo Layer):
-                </label>
-                <select
-                  id="telemetry-scenario-picker"
-                  value={telemetryScenarioKey}
-                  onChange={(e) => setTelemetryScenarioKey(e.target.value)}
-                  className="w-full sm:w-72 px-3 py-2 rounded-xl bg-[#F7F6F2] border border-[#D5D2C9] text-xs sm:text-sm font-semibold text-[#1B3B2B] focus:outline-none focus:ring-2 focus:ring-[#1B3B2B]"
-                >
-                  <option value="night_operational">
-                    1. Operational &amp; Available (Night Demo)
-                  </option>
-                  <option value="day_standby">
-                    2. Daytime Standby &amp; Port In Use (Demo)
-                  </option>
-                  <option value="unverified_hardware">
-                    3. Unknown Status (Unverified Sensor Feedback)
-                  </option>
-                  <option value="esp32_offline">
-                    4. Offline / Stale ESP32 Data Timeout
-                  </option>
-                </select>
-              </div>
             </div>
 
-            {currentTelemetry.isStale && (
-              <div className="mt-6 p-4 rounded-xl bg-[#FEF2F2] border border-[#FECACA] flex items-center gap-3 text-xs sm:text-sm text-[#991B1B]">
-                <WifiOff className="w-5 h-5 shrink-0" />
-                <div>
-                  <strong>Status unavailable:</strong> The website has not received
-                  recent telemetry from the ESP32 microcontroller (
-                  {currentTelemetry.lastUpdatedText}). Misleading green indicators
-                  are suppressed until fresh hardware data arrives.
-                </div>
-              </div>
-            )}
-
-            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-              <StatusCard
-                category="Roadside Illumination"
-                title="Streetlight Status"
-                icon={Lightbulb}
-                stateLabel={currentTelemetry.streetlight.state}
-                statusKey={currentTelemetry.streetlight.statusKey}
-                summary={currentTelemetry.streetlight.summary}
-                detail={currentTelemetry.streetlight.detail}
-                lastUpdated={currentTelemetry.lastUpdatedText}
-                possibleStates={['Operational', 'Not operating', 'Unknown', 'Offline']}
-              />
-
-              <StatusCard
-                category="Mobile Device Charging"
-                title="Public Charging Status"
-                icon={Usb}
-                stateLabel={currentTelemetry.charging.state}
-                statusKey={currentTelemetry.charging.statusKey}
-                summary={currentTelemetry.charging.summary}
-                detail={currentTelemetry.charging.detail}
-                lastUpdated={currentTelemetry.lastUpdatedText}
-                possibleStates={[
-                  'Available',
-                  'In use',
-                  'Unavailable',
-                  'Unknown',
-                  'Offline'
-                ]}
-              />
-            </div>
-
-            <div className="mt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3.5 rounded-xl bg-white/80 border border-[#D8D5CD] text-xs text-[#525B56]">
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-[#1B3B2B] shrink-0" />
-                <span>
-                  <strong>Telemetry readiness:</strong> Actual status verification
-                  depends on installed monitoring hardware (e.g., load-current or
-                  voltage sensing wired to the ESP32), rather than assuming a
-                  component works solely from a software command.
-                </span>
-              </div>
-              <span className="font-mono text-[11px] text-[#1B3B2B] shrink-0">
-                Source: src/data/demoTelemetry
-              </span>
-            </div>
-
-            <div className="mt-6 bg-[#1B3B2B] text-white rounded-2xl p-5 sm:p-6 border border-[#143022] flex flex-col md:flex-row items-start md:items-center justify-between gap-5 shadow-xs">
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center text-[#E5A93B] shrink-0">
-                  <QrCode className="w-6 h-6" />
-                </div>
-                <div>
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#A7F3D0]">
-                    On-Site Community Access • Weatherproof Pole Plaque
-                  </span>
-                  <h3 className="text-lg sm:text-xl font-bold mt-0.5">
-                    Scan at the Streetlight Pole to Open This Public Dashboard
-                  </h3>
-                  <p className="mt-1 text-xs sm:text-sm text-white/80 max-w-2xl leading-relaxed">
-                    A printed QR code plaque mounted on the yellow battery and USB
-                    charging enclosure lets residents, students, and commuters open
-                    this 3D guide and facility status page directly on their phones.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setQrModalOpen(true)}
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#E5A93B] hover:bg-[#d89b2b] text-[#1A241E] text-xs sm:text-sm font-bold transition-colors shrink-0 shadow-xs"
-              >
-                <QrCode className="w-4 h-4" />
-                <span>View &amp; Download QR Sticker</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setQrModalOpen(true)}
+              className="inline-flex items-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-[#E5A93B] hover:bg-[#d89b2b] text-[#1A241E] text-xs sm:text-sm font-bold transition-colors shrink-0 shadow-xs"
+            >
+              <QrCode className="w-4 h-4" />
+              <span>View &amp; Download QR Sticker</span>
+            </button>
           </div>
         </section>
 
