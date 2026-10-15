@@ -34,6 +34,17 @@ import {
 // 1. DEMONSTRATION DATA & COMPONENT DEFINITIONS
 // ============================================================================
 const SYSTEM_COMPONENTS = {
+  photocell: {
+    id: 'photocell',
+    name: 'Photocell (LDR Sensor)',
+    shortLabel: 'Photocell sensor',
+    dotColor: '#e879f9',
+    stage: 'Use / Control',
+    functionText: 'Senses ambient daylight levels to automatically switch the LED streetlight on at dusk and off at dawn independently of website connectivity.',
+    roleText: 'Mounted near the luminaire fixture to provide local automated switching based on real-time environmental lighting.',
+    benefitText: 'Ensures reliable, autonomous nighttime illumination along Macopoy Road without manual intervention.',
+    demoStatus: 'Active (Controls automatic nighttime lamp switching)',
+  }, 
   turbine: {
     id: 'turbine',
     name: 'Wind Turbine',
@@ -206,6 +217,8 @@ const CAMERA_PRESETS = [
   { id: 'lamp', label: 'LED light', pos: [-3.4, 5.4, 5.8], target: [-1.6, 4.2, 2.2] },
   { id: 'battery', label: 'Battery and charging', pos: [-0.7, 2.4, 3.3], target: [-1.5, 1.85, -0.35] },
   { id: 'bench', label: 'Bench', pos: [1.2, 2.1, 4.2], target: [0.65, 1.2, -0.45] },
+  // Add to CAMERA_PRESETS array:
+  { id: 'photocell', label: 'Photocell sensor', pos: [-3.2, 5.8, 5.2], target: [-1.65, 5.5, 0.1] },
 ];
 
 const RESEARCHERS = [
@@ -362,7 +375,7 @@ function StreetlightThreeScene({
     selectedComponent,
     isMobile: false,
   });
-
+  
   useEffect(() => {
     stateRef.current.timeOfDay = timeOfDay;
     stateRef.current.showLabels = showLabels;
@@ -680,6 +693,7 @@ function StreetlightThreeScene({
     // 3. Solar Panel Roof Canopy + Dual-Axis / Tilt Tracker Mechanism
     const solarPivotGroup = new THREE.Group();
     solarPivotGroup.position.set(0.65, 3.22, -0.45);
+    solarPivotGroup.rotation.x = 0.15;
     hubGroup.add(solarPivotGroup);
 
     const trackerActuator = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.28, 14), darkFrameMat);
@@ -753,7 +767,21 @@ function StreetlightThreeScene({
     const lampGroup = new THREE.Group();
     lampGroup.position.set(-1.65, 5.48, 0.25);
     hubGroup.add(lampGroup);
+    // Photocell Sensor mounted on the lamp housing
+    const photocellGroup = new THREE.Group();
+    photocellGroup.position.set(0, 0.12, -0.28);
+    lampGroup.add(photocellGroup);
 
+    const sensorBodyMat = new THREE.MeshStandardMaterial({ color: '#334155', roughness: 0.4 });
+    const sensorBody = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.06, 16), sensorBodyMat);
+    sensorBody.rotation.x = Math.PI / 2;
+    registerSelectable(sensorBody, 'photocell');
+    photocellGroup.add(sensorBody);
+
+    const ldrFaceMat = new THREE.MeshBasicMaterial({ color: '#f43f5e' });
+    const ldrFace = new THREE.Mesh(new THREE.CircleGeometry(0.028, 16), ldrFaceMat);
+    ldrFace.position.set(0, 0, 0.032);
+    photocellGroup.add(ldrFace);
     // Green rectangular overhang hood extending toward the rough road (matching Image 3)
     const lampHood = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.18, 1.65), greenMetalMat);
     lampHood.position.set(0, 0.05, 0.35);
@@ -1098,6 +1126,7 @@ function StreetlightThreeScene({
       lamp: new THREE.Vector3(-1.65, 5.75, 0.85),
       battery: new THREE.Vector3(-1.38, 2.38, -0.15),
       bench: new THREE.Vector3(0.75, 1.65, -0.1),
+      photocell: new THREE.Vector3(-1.65, 5.72, 0.0),
     };
 
     // ------------------------------------------------------------------------
@@ -1242,9 +1271,9 @@ function StreetlightThreeScene({
       hemiLight.intensity = 0.18 + dayFactor * 0.72;
 
       // Solar tracker smoothly tilts panel slightly toward sun during daytime
-      const targetTiltZ = dayFactor > 0.05 ? Math.cos(sunAngle) * 0.14 : 0;
-      solarPivotGroup.rotation.z = THREE.MathUtils.lerp(solarPivotGroup.rotation.z, targetTiltZ, 0.08);
-      solarPivotGroup.rotation.x = THREE.MathUtils.lerp(solarPivotGroup.rotation.x, 0.1, 0.08);
+      //const targetTiltZ = dayFactor > 0.05 ? Math.cos(sunAngle) * 0.14 : 0;
+      //solarPivotGroup.rotation.z = THREE.MathUtils.lerp(solarPivotGroup.rotation.z, targetTiltZ, 0.08);
+      //solarPivotGroup.rotation.x = THREE.MathUtils.lerp(solarPivotGroup.rotation.x, 0.1, 0.08);
 
       // Photocell automatic LED nighttime switching (ON when dayFactor < 0.18)
       const nightLampIntensity = THREE.MathUtils.clamp((0.22 - dayFactor) * 5.0, 0, 1);
