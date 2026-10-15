@@ -2033,20 +2033,22 @@ export default function App() {
 
               {/* Component selector pills */}
               <div className="flex flex-wrap gap-1.5">
-                {Object.values(SYSTEM_COMPONENTS).map((comp) => (
-                  <button
-                    key={comp.id}
-                    type="button"
-                    onClick={() => handleSelectComponent(comp.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors border ${
-                      selectedComponent === comp.id
-                        ? 'bg-[#1f4437] text-white border-[#1f4437]'
-                        : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-200'
-                    }`}
-                  >
-                    {comp.shortLabel}
-                  </button>
-                ))}
+                {Object.values(SYSTEM_COMPONENTS)
+                  .filter((comp) => comp.id !== 'solar')
+                  .map((comp) => (
+                    <button
+                      key={comp.id}
+                      type="button"
+                      onClick={() => handleSelectComponent(comp.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors border ${
+                        selectedComponent === comp.id
+                          ? 'bg-[#1f4437] text-white border-[#1f4437]'
+                          : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-200'
+                      }`}
+                    >
+                      {comp.shortLabel}
+                    </button>
+                  ))}
               </div>
             </div>
 
